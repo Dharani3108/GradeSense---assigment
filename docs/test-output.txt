@@ -1,0 +1,67 @@
+ ✓ tests/grading.test.ts > a fully correct answer > awards full marks with no reversed-reasoning findings 
+ ✓ tests/grading.test.ts > a partially correct answer > scores between zero and full, and names what is missing 
+ ✓ tests/grading.test.ts > an incorrect answer > detects reversed relationships that share the expected vocabulary 
+ ✓ tests/annotations.test.ts > locating a quote on the page > returns a box around the words it matched 
+ ✓ tests/annotations.test.ts > locating a quote on the page > still matches when OCR damaged the characters 
+ ✓ tests/annotations.test.ts > locating a quote on the page > returns nothing for text the student never wrote 
+ ✓ tests/annotations.test.ts > locating a quote on the page > produces one box per line for a quote that wraps 
+ ✓ tests/annotations.test.ts > annotation generation > creates one annotation per rubric point 
+ ✓ tests/annotations.test.ts > annotation generation > carries the marks, the feedback and the correction 
+ ✓ tests/annotations.test.ts > annotation generation > keeps every box inside the page 
+ ✓ tests/annotations.test.ts > annotation generation > flags misspellings with the word the student meant 
+ ✓ tests/annotations.test.ts > editing annotations > persists the generated set 
+ ✓ tests/annotations.test.ts > editing annotations > moves an annotation without regrading the paper 
+ ✓ tests/annotations.test.ts > editing annotations > rewrites the comment and the correction in place 
+ ✓ tests/annotations.test.ts > editing annotations > changes the type of an annotation 
+ ✓ tests/annotations.test.ts > editing annotations > adds a teacher annotation of its own 
+ ✓ tests/annotations.test.ts > editing annotations > clamps an annotation dragged off the page 
+ ✓ tests/annotations.test.ts > editing annotations > deletes an annotation and leaves the rest alone 
+ ✓ tests/annotations.test.ts > editing annotations > reports a missing annotation instead of creating one 
+ ✓ tests/grading.test.ts > an incorrect answer > still credits the points the student did get right 
+ ✓ tests/grading.test.ts > a blank answer > scores zero, flags review, and never calls the model 
+ ✓ tests/grading.test.ts > a blank answer > reports why an unreadable scan produced nothing 
+ ✓ tests/grading.test.ts > an answer with OCR-like spelling errors > grades it the same as the clean answer 
+ ✓ tests/grading.test.ts > an answer with OCR-like spelling errors > lowers confidence in step with the OCR confidence 
+ ✓ tests/grading.test.ts > malformed or incomplete model output > recovers JSON wrapped in prose and code fences 
+ ✓ tests/grading.test.ts > malformed or incomplete model output > keeps valid rows, zeroes the malformed ones, and says so 
+ ✓ tests/grading.test.ts > malformed or incomplete model output > gives up with a clear error when nothing can be parsed at all 
+ ✓ tests/grading.test.ts > a model or API failure > retries, then fails with a message instead of a wrong grade 
+ ✓ tests/grading.test.ts > a model or API failure > does not retry a failure that cannot succeed on a retry 
+ ✓ tests/rubric.test.ts > rubric parsing > reads every question and criterion out of the real model answer 
+ ✓ tests/rubric.test.ts > rubric parsing > gives every criterion a stable id 
+ ✓ tests/rubric.test.ts > rubric parsing > falls back to a flagged generic rubric when the document has no questions 
+ ✓ tests/rubric.test.ts > rubric parsing > infers a per-question criterion when the marking table is missing 
+ ✓ tests/rubric.test.ts > prose extraction > drops the marking tables and the grading guidance 
+ ✓ tests/rubric.test.ts > pdf text extraction > returns positioned words for the sample student answer 
+ ✓ tests/rubric.test.ts > pdf text extraction > warns rather than throwing when a PDF has no text layer 
+ ✓ tests/rubric.test.ts > pdf text extraction > positions words from a plain text answer 
+ ✓ tests/rubric.test.ts > sample documents > ships the question paper, model answer and student answer 
+ ✓ tests/api.test.ts > the grading workflow end to end > creates a session that knows which documents are still missing 
+ ✓ tests/api.test.ts > the grading workflow end to end > refuses to grade before all three documents are uploaded 
+ ✓ tests/api.test.ts > the grading workflow end to end > produces a report whose total equals the sum of its rubric points 
+ ✓ tests/api.test.ts > the grading workflow end to end > flags the offline grader for human review and says why 
+ ✓ tests/api.test.ts > the grading workflow end to end > finds the reversed reasoning planted in the sample answer 
+ ✓ tests/api.test.ts > the grading workflow end to end > anchors annotations onto the answer sheet 
+ ✓ tests/api.test.ts > the grading workflow end to end > returns the whole session state in one request 
+ ✓ tests/api.test.ts > the grading workflow end to end > serves the original answer file for the viewer 
+ ✓ tests/api.test.ts > the grading workflow end to end > edits an annotation over HTTP without regrading 
+ ✓ tests/api.test.ts > the grading workflow end to end > rejects an annotation with coordinates outside the page 
+ ✓ tests/api.test.ts > the grading workflow end to end > rejects an unknown annotation type 
+ ✓ tests/api.test.ts > the grading workflow end to end > exports an annotated PDF and leaves the original untouched 
+ ✓ tests/api.test.ts > the grading workflow end to end > exports the teacher edits, not the generated set 
+ ✓ tests/api.test.ts > the grading workflow end to end > lists the report in history 
+ ✓ tests/api.test.ts > the grading workflow end to end > reports which providers are in use 
+ ✓ tests/api.test.ts > input validation and errors > rejects a malformed session id 
+ ✓ tests/api.test.ts > input validation and errors > reports a session that does not exist 
+ ✓ tests/api.test.ts > input validation and errors > rejects a file type it cannot read 
+ ✓ tests/api.test.ts > input validation and errors > rejects an upload sent under an unknown field name 
+ ✓ tests/api.test.ts > input validation and errors > answers an unknown route with JSON 
+ ✓ tests/api.test.ts > a blank answer submitted through the API > grades to zero and is flagged, rather than failing 
+ ✓ tests/api.test.ts > deleting a report > removes the report and its annotations 
+ ✓ tests/grading.test.ts > a model or API failure > times out a model that never responds 
+ ✓ tests/grading.test.ts > a score that would exceed the maximum > caps each rubric point and records the correction 
+ ✓ tests/grading.test.ts > a score that would exceed the maximum > raises a negative mark to zero 
+ ✓ tests/grading.test.ts > evidence > flags a quote that does not appear in the answer 
+ ✓ tests/grading.test.ts > evidence > accepts a quote that survives OCR damage 
+ Test Files  4 passed (4)
+      Tests  65 passed (65)

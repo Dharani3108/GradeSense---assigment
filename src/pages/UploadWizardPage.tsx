@@ -1,85 +1,226 @@
-import { CheckCircle2, FileCheck2, Sparkles } from 'lucide-react'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { AnimatePresence, motion } from 'framer-motion'
+import { CheckCircle2, FileCheck2, Info, Sparkles } from 'lucide-react'
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
-import { UploadCard } from '../components/upload/UploadCard'
+import { z } from 'zod'
 import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 import { Stepper } from '../components/ui/Stepper'
-import { API_BASE_URL } from '../lib/api-config'
-import { useOcr } from '../context/ocr-context'
-import type { UploadFile } from '../types/grading'
+import { UploadCard } from '../components/upload/UploadCard'
+import { useServiceConfig } from '../hooks/use-service-config'
+import { messageOf } from '../hooks/use-async'
+import { sessionService } from '../services/session.service'
+import type { UploadKind } from '../types/grading'
 
-type UploadField = 'questionPaper' | 'modelAnswer' | 'studentAnswer'
-interface BackendUpload { id: string; originalName: string; storedName: string; mimeType: string; sizeBytes: number; kind: UploadField; path: string; createdAt: string }
-interface UploadResponse { message: string; uploads: BackendUpload[] }
+const detailsSchema = z.object({
+  studentName: z.string().trim().min(2, 'Enter the student name (at least 2 characters).').max(120),
+  assignment: z.string().trim().min(2, 'Name the exam or assignment.').max(160),
+})
 
-const steps = [
-  { label: 'Question Paper', field: 'questionPaper' as const, hint: 'PDF or image of the exam question.', pages: '2 pages' },
-  { label: 'Model Answer', field: 'modelAnswer' as const, hint: 'Model answer, rubric, or marking guidance.', pages: '3 pages' },
-  { label: 'Student Answer', field: 'studentAnswer' as const, hint: 'The handwritten or typed student answer sheet.', pages: '2 pages' },
+type Details = z.infer<typeof detailsSchema>
+
+const DOCUMENTS: Array<{ kind: UploadKind; label: string; hint: string }> = [
+  { kind: 'questionPaper', label: 'Question paper', hint: 'The exam questions, so feedback can refer to what was asked.' },
+  { kind: 'modelAnswer', label: 'Model answer and rubric', hint: 'The marking rubric is read from this file to set the marks available.' },
+  { kind: 'studentAnswer', label: 'Student answer', hint: 'The answer sheet to grade and annotate.' },
 ]
 
-function formatFileSize(bytes: number) { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB` }
+const STEPS = ['Details', ...DOCUMENTS.map(document => document.label)]
 
-function uploadDocument(file: File, field: UploadField, onProgress: (value: number) => void): Promise<BackendUpload> {
-  return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest()
-    const formData = new FormData()
-    formData.append(field, file)
-    request.open('POST', `${API_BASE_URL}/api/upload`)
-    request.upload.onprogress = event => { if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100)) }
-    request.onerror = () => reject(new Error('Could not connect to the GradeSense upload service.'))
-    request.onload = () => {
-      let payload: Partial<UploadResponse> & { message?: string }
-      try { payload = JSON.parse(request.responseText || '{}') as Partial<UploadResponse> & { message?: string } } catch { return reject(new Error('The upload service returned an invalid response.')) }
-      if (request.status < 200 || request.status >= 300) return reject(new Error(payload.message ?? 'The file could not be uploaded.'))
-      const uploaded = payload.uploads?.[0]
-      if (!uploaded) return reject(new Error('The upload service did not return file metadata.'))
-      resolve(uploaded)
-    }
-    request.send(formData)
-  })
+function formatSize(bytes: number) {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export function UploadWizardPage() {
-  const [activeStep, setActiveStep] = useState(1)
-  const [uploads, setUploads] = useState<Record<number, UploadFile>>({})
-  const [uploadedDocuments, setUploadedDocuments] = useState<Record<number, BackendUpload>>({})
-  const [selectedFiles, setSelectedFiles] = useState<Record<number, File>>({})
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [step, setStep] = useState(1)
+  const [uploaded, setUploaded] = useState<Record<UploadKind, { name: string; size: string } | undefined>>({
+    questionPaper: undefined, modelAnswer: undefined, studentAnswer: undefined,
+  })
+  const [pending, setPending] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const { setStudentAnswerUploadId, setRubricUploadId, setOcrResult, setGradingResult } = useOcr()
   const navigate = useNavigate()
-  const current = steps[activeStep - 1]
-  const complete = Object.keys(uploads).map(Number)
-  const allComplete = complete.length === steps.length
+  const { data: config } = useServiceConfig()
+
+  const form = useForm<Details>({
+    resolver: zodResolver(detailsSchema),
+    defaultValues: { studentName: '', assignment: '' },
+    mode: 'onBlur',
+  })
+
+  const completed = DOCUMENTS.map((document, index) => (uploaded[document.kind] ? index + 2 : 0)).filter(Boolean)
+  const allUploaded = DOCUMENTS.every(document => uploaded[document.kind])
+  const current = DOCUMENTS[step - 2]
+
+  const startSession = async (details: Details) => {
+    setError(null)
+    try {
+      const session = await sessionService.create(details)
+      setSessionId(session.id)
+      setStep(2)
+    } catch (caught) {
+      setError(messageOf(caught))
+    }
+  }
 
   const uploadFile = async (file: File) => {
-    if (isUploading) return
-    setSelectedFiles(state => ({ ...state, [activeStep]: file }))
+    if (!sessionId || !current || isUploading) return
+    setPending(file)
     setError(null)
     setProgress(0)
     setIsUploading(true)
     try {
-      const uploaded = await uploadDocument(file, current.field, setProgress)
-      setUploads(state => ({ ...state, [activeStep]: { name: uploaded.originalName, size: formatFileSize(uploaded.sizeBytes) } }))
-      setUploadedDocuments(state => ({ ...state, [activeStep]: uploaded }))
-      if (current.field === 'studentAnswer') {
-        setStudentAnswerUploadId(uploaded.id)
-        setOcrResult(null)
-        setGradingResult(null)
-      }
-      if (current.field === 'modelAnswer') setRubricUploadId(uploaded.id)
-      if (activeStep < steps.length) window.setTimeout(() => setActiveStep(step => step + 1), 700)
+      const result = await sessionService.uploadDocument(sessionId, current.kind, file, setProgress)
+      const stored = result.uploads[0]
+      setUploaded(state => ({ ...state, [current.kind]: { name: stored.originalName, size: formatSize(stored.sizeBytes) } }))
+      if (step < STEPS.length) window.setTimeout(() => setStep(value => value + 1), 500)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The file could not be uploaded. Please try again.')
+      setError(messageOf(caught, 'The file could not be uploaded.'))
     } finally {
       setIsUploading(false)
     }
   }
 
-  const retryUpload = () => { const file = selectedFiles[activeStep]; if (file) void uploadFile(file) }
+  return (
+    <div className="mx-auto max-w-[960px] py-4 sm:py-10">
+      <header className="mx-auto max-w-2xl text-center">
+        <span className="inline-flex items-center gap-2 rounded-full border border-[#f2d8ce] bg-[#fdf4ef] px-3 py-1.5 text-xs font-medium text-[#bd6247]">
+          <Sparkles className="size-3.5" />Explainable grading workspace
+        </span>
+        <h1 className="mt-5 text-3xl font-semibold tracking-[-0.035em] text-zinc-900 sm:text-5xl">
+          Grade an answer sheet, and show the student exactly where the marks went.
+        </h1>
+        <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-stone-500 sm:text-base">
+          Upload the question paper, the marking rubric and the student answer. GradeSense marks each rubric point,
+          quotes the evidence, and puts an editable correction on the page.
+        </p>
+      </header>
 
-  return <div className="mx-auto max-w-[960px] py-4 sm:py-10"><header className="mx-auto max-w-2xl text-center"><span className="inline-flex items-center gap-2 rounded-full border border-[#f2d8ce] bg-[#fdf4ef] px-3 py-1.5 text-xs font-medium text-[#bd6247]"><Sparkles className="size-3.5" />AI-powered grading workspace</span><h1 className="mt-5 text-3xl font-semibold tracking-[-0.035em] text-zinc-900 sm:text-5xl">Grade handwritten answer sheets with explainable AI.</h1><p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-stone-500 sm:text-base">Upload the question, your marking guidance, and a student response. GradeSense will organise the evidence for your review.</p></header><div className="mt-12 rounded-[20px] border bg-white p-5 shadow-[0_12px_40px_rgb(67,48,39,0.05)] sm:p-8"><Stepper steps={steps.map(step => step.label)} activeStep={activeStep} completedSteps={complete} /><AnimatePresence mode="wait">{!allComplete ? <motion.section key={activeStep} initial={{ opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -14 }} transition={{ duration: 0.25 }} className="mt-10"><div className="mb-5 text-center"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#bd6247]">Step {activeStep} of 3</p><h2 className="mt-2 text-xl font-semibold tracking-tight">Add the {current.label.toLowerCase()}</h2></div><UploadCard label={current.label} hint={current.hint} pages={current.pages} file={uploads[activeStep]} isUploading={isUploading} progress={progress} error={error ?? undefined} onFileSelected={file => void uploadFile(file)} onRetry={retryUpload} /></motion.section> : <motion.section key="complete" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="mt-10 text-center"><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-green-50 text-[#16A34A]"><CheckCircle2 className="size-6" /></span><h2 className="mt-4 text-xl font-semibold">Everything is ready to review</h2><p className="mt-2 text-sm text-stone-500">Your three documents are organised and ready for annotation.</p><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25, delay: 0.1 }}><Button className="mt-7 h-14 w-full max-w-xl text-base shadow-lg shadow-[#D97757]/20" onClick={() => navigate('/processing')}><FileCheck2 className="size-5" />Grade & Annotate Answer</Button></motion.div></motion.section>}</AnimatePresence></div></div>
+      {config?.llmProvider === 'mock' && (
+        <Card className="mx-auto mt-8 flex max-w-2xl gap-3 p-4">
+          <Info className="mt-0.5 size-4 shrink-0 text-[#bd6247]" />
+          <p className="text-xs leading-5 text-stone-600">
+            Running with the offline reference grader. It matches rubric vocabulary and catches reversed reasoning,
+            and every report it produces is flagged for review. Set <code className="rounded bg-stone-100 px-1">GEMINI_API_KEY</code> in
+            the backend to grade with Gemini instead.
+          </p>
+        </Card>
+      )}
+
+      <div className="mt-8 rounded-[20px] border bg-white p-5 shadow-[0_12px_40px_rgb(67,48,39,0.05)] sm:p-8">
+        <Stepper steps={STEPS} activeStep={step} completedSteps={sessionId ? [1, ...completed] : completed} />
+
+        <AnimatePresence mode="wait">
+          {step === 1 ? (
+            <motion.section
+              key="details"
+              initial={{ opacity: 0, x: 14 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -14 }}
+              transition={{ duration: 0.25 }}
+              className="mt-10"
+            >
+              <div className="mb-6 text-center">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#bd6247]">Step 1 of {STEPS.length}</p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight">Who is this paper for?</h2>
+              </div>
+
+              <form onSubmit={form.handleSubmit(startSession)} className="mx-auto max-w-md space-y-4" noValidate>
+                <div>
+                  <label htmlFor="studentName" className="block text-sm font-medium text-stone-700">Student name</label>
+                  <input
+                    id="studentName"
+                    autoComplete="off"
+                    aria-invalid={Boolean(form.formState.errors.studentName)}
+                    aria-describedby={form.formState.errors.studentName ? 'studentName-error' : undefined}
+                    className="mt-2 h-12 w-full rounded-xl border bg-white px-4 text-sm shadow-sm focus:border-[#D97757]"
+                    {...form.register('studentName')}
+                  />
+                  {form.formState.errors.studentName && (
+                    <p id="studentName-error" role="alert" className="mt-1.5 text-xs text-red-600">
+                      {form.formState.errors.studentName.message}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="assignment" className="block text-sm font-medium text-stone-700">Exam or assignment</label>
+                  <input
+                    id="assignment"
+                    autoComplete="off"
+                    aria-invalid={Boolean(form.formState.errors.assignment)}
+                    aria-describedby={form.formState.errors.assignment ? 'assignment-error' : undefined}
+                    className="mt-2 h-12 w-full rounded-xl border bg-white px-4 text-sm shadow-sm focus:border-[#D97757]"
+                    {...form.register('assignment')}
+                  />
+                  {form.formState.errors.assignment && (
+                    <p id="assignment-error" role="alert" className="mt-1.5 text-xs text-red-600">
+                      {form.formState.errors.assignment.message}
+                    </p>
+                  )}
+                </div>
+
+                {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+
+                <Button type="submit" className="h-12 w-full" disabled={form.formState.isSubmitting}>
+                  {form.formState.isSubmitting ? 'Starting…' : 'Continue'}
+                </Button>
+              </form>
+            </motion.section>
+          ) : !allUploaded && current ? (
+            <motion.section
+              key={current.kind}
+              initial={{ opacity: 0, x: 14 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -14 }}
+              transition={{ duration: 0.25 }}
+              className="mt-10"
+            >
+              <div className="mb-5 text-center">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#bd6247]">Step {step} of {STEPS.length}</p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight">Add the {current.label.toLowerCase()}</h2>
+              </div>
+              <UploadCard
+                label={current.label}
+                hint={current.hint}
+                file={uploaded[current.kind]}
+                isUploading={isUploading}
+                progress={progress}
+                error={error ?? undefined}
+                imageOcrAvailable={config?.imageOcrAvailable ?? false}
+                onFileSelected={file => void uploadFile(file)}
+                onRetry={() => pending && void uploadFile(pending)}
+              />
+            </motion.section>
+          ) : (
+            <motion.section
+              key="ready"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="mt-10 text-center"
+            >
+              <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-green-50 text-[#16A34A]">
+                <CheckCircle2 className="size-6" />
+              </span>
+              <h2 className="mt-4 text-xl font-semibold">All three documents are in</h2>
+              <p className="mt-2 text-sm text-stone-500">
+                GradeSense will read the rubric, mark each point against it, and place the annotations.
+              </p>
+              <Button
+                className="mt-7 h-14 w-full max-w-xl text-base shadow-lg shadow-[#D97757]/20"
+                onClick={() => sessionId && navigate(`/processing/${sessionId}`)}
+              >
+                <FileCheck2 className="size-5" />Grade and annotate
+              </Button>
+            </motion.section>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  )
 }

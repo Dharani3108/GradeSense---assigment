@@ -9,7 +9,7 @@ interface StepperProps {
 
 export function Stepper({ steps, activeStep, completedSteps }: StepperProps) {
   return (
-    <ol className="grid grid-cols-3 gap-2 sm:gap-4" aria-label="Upload progress">
+    <ol className="grid gap-2 sm:gap-4" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }} aria-label="Upload progress">
       {steps.map((step, index) => {
         const number = index + 1
         const complete = completedSteps.includes(number)

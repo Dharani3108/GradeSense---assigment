@@ -1,90 +1,269 @@
-import { Check, ChevronDown, CircleAlert, Download, LoaderCircle, Save, ScanText, Trash2, X } from 'lucide-react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { AlertCircle, Download, LoaderCircle, MousePointerClick, Plus, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { AnnotationInspector } from '../components/annotations/AnnotationInspector'
+import { AnswerCanvas, type Rect } from '../components/annotations/AnswerCanvas'
+import { ANNOTATION_STYLES } from '../components/annotations/annotation-styles'
+import { RubricBreakdown } from '../components/grading/RubricBreakdown'
+import { ScoreCard } from '../components/grading/ScoreCard'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { EmptyState } from '../components/ui/EmptyState'
-import { useOcr, type GradingResult, type OcrWord } from '../context/ocr-context'
-import { API_BASE_URL } from '../lib/api-config'
-
-const annotationStyles = [{ marker: 'border-[#D97757] bg-[#D97757] text-white', highlight: 'border-[#D97757]' }, { marker: 'border-red-500 bg-red-500 text-white', highlight: 'border-red-500' }, { marker: 'border-blue-500 bg-blue-500 text-white', highlight: 'border-blue-500' }]
-interface PositionedWord { word: OcrWord; index: number; left: number; top: number; width: number; height: number }
-type ExplanationState = 'Correctly identified' | 'Partially satisfied' | 'Missing from rubric'
-type AnnotationType = 'Missing' | 'Incorrect' | 'Grammar' | 'Feedback'
-function normalizeText(value: string) { return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '') }
-function scoreColor(score: number, maximum: number) { const ratio = maximum ? score / maximum : 0; return ratio === 1 ? '#16A34A' : ratio === 0 ? '#DC2626' : '#D97757' }
-function explanationState(reason: string): ExplanationState { const lower = reason.toLowerCase(); if (/missing|absent|not (addressed|included|present)|no evidence/.test(lower)) return 'Missing from rubric'; if (/partial|partly|limited|could|however|but /.test(lower)) return 'Partially satisfied'; return 'Correctly identified' }
-function explanationTone(state: ExplanationState) { return state === 'Correctly identified' ? 'success' : state === 'Partially satisfied' ? 'warning' : 'error' }
-function annotationType(reason: string, confidence: number): AnnotationType { if (explanationState(reason) === 'Missing from rubric') return 'Missing'; if (explanationState(reason) === 'Partially satisfied') return 'Incorrect'; return confidence < 85 ? 'Grammar' : 'Feedback' }
-function sentenceFor(text: string, word: string) { return text.split(/(?<=[.!?])\s+/).find(sentence => normalizeText(sentence).includes(normalizeText(word))) ?? word }
-
-function EvidenceCard({ evidence, selected, ocrWords, onSelect }: { evidence: GradingResult['evidence'][number]; selected: boolean; ocrWords: OcrWord[]; onSelect: () => void }) {
-  const [expanded, setExpanded] = useState(false)
-  const state = explanationState(evidence.reason)
-  const quoteTokens = new Set(evidence.quote.split(/\s+/).map(normalizeText).filter(Boolean))
-  const confidenceWords = ocrWords.filter(word => quoteTokens.has(normalizeText(word.text)))
-  const confidence = confidenceWords.length ? Math.round(confidenceWords.reduce((total, word) => total + word.confidence, 0) / confidenceWords.length) : 0
-  return <motion.div onClick={onSelect} animate={{ borderColor: selected ? '#D97757' : '#E8E5E2', backgroundColor: selected ? '#fdf7f4' : '#ffffff' }} transition={{ duration: 0.25 }} className="w-full rounded-xl border p-3 text-left"><p className="text-xs font-semibold">Rubric Point</p><p className="mt-1 text-xs leading-5 text-stone-600">{evidence.criterion}</p><div className="mt-3 border-l-2 border-[#D97757] pl-2.5"><p className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">Student quote</p><p className="mt-1 text-xs italic leading-5 text-stone-600">“{evidence.quote}”</p></div><button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)} className="mt-3 flex w-full items-center justify-between rounded-lg text-left text-[11px] font-medium text-[#bd6247] hover:text-[#D97757]"><span>Explain AI Decision</span><ChevronDown className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} /></button><AnimatePresence initial={false}>{expanded && <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} className="overflow-hidden"><div className="mt-3 rounded-lg bg-white/70 p-3"><div className="flex flex-wrap items-center gap-2"><Badge tone={explanationTone(state)}>{state}</Badge><Badge tone="neutral">{confidence}% confidence</Badge></div><p className="mt-2 text-[11px] leading-5 text-stone-500">{evidence.reason}</p></div></motion.div>}</AnimatePresence></motion.div>
-}
-
-function AnnotationPanel({ number, type, sentence, comment, savedComment, onCommentChange, onSave, onDelete, onClose }: { number: number; type: AnnotationType; sentence: string; comment: string; savedComment: string; onCommentChange: (value: string) => void; onSave: () => void; onDelete: () => void; onClose: () => void }) {
-  const unsaved = comment !== savedComment
-  return <motion.aside initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 28 }} transition={{ duration: 0.25 }} className="fixed bottom-5 right-5 z-50 w-[calc(100%-2.5rem)] max-w-sm rounded-[20px] border bg-white p-5 shadow-[0_18px_50px_rgb(67,48,39,0.18)]" aria-label={`Edit annotation ${number}`}><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#bd6247]">Annotation {number}</p><div className="mt-2 flex items-center gap-2"><h2 className="text-base font-semibold">Teacher annotation</h2><Badge tone={type === 'Missing' ? 'warning' : type === 'Incorrect' ? 'error' : 'neutral'}>{type}</Badge></div></div><button type="button" onClick={onClose} className="grid size-8 place-items-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700" aria-label="Close annotation panel"><X className="size-4" /></button></div><div className="mt-5 rounded-xl bg-stone-50 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">Selected OCR sentence</p><p className="mt-1 text-xs leading-5 text-stone-600">{sentence}</p></div><div className="mt-4 flex items-center justify-between gap-3"><label htmlFor="annotation-comment" className="text-sm font-semibold">AI-generated comment</label>{unsaved && <Badge tone="warning">Unsaved changes</Badge>}</div><textarea id="annotation-comment" value={comment} onChange={event => onCommentChange(event.target.value)} className="mt-2 min-h-24 w-full rounded-xl border bg-[#FCFBFA] p-3 text-xs leading-5 text-stone-700 focus:border-[#D97757]" /><div className="mt-4 flex gap-2"><Button size="sm" onClick={onSave}><Save className="size-3.5" />Save</Button><Button size="sm" variant="ghost" className="ml-auto text-red-600 hover:bg-red-50 hover:text-red-700" onClick={onDelete}><Trash2 className="size-3.5" />Delete</Button></div></motion.aside>
-}
+import { useAnnotations } from '../hooks/use-annotations'
+import { messageOf, useAsync } from '../hooks/use-async'
+import { answerFileUrl } from '../lib/api-client'
+import type { RenderedPage } from '../lib/pdf'
+import { reportService } from '../services/report.service'
+import { sessionService } from '../services/session.service'
 
 export function ResultsPage() {
-  const [selectedEvidence, setSelectedEvidence] = useState(0)
-  const [selectedMarker, setSelectedMarker] = useState<number | null>(null)
-  const [deletedMarkers, setDeletedMarkers] = useState<number[]>([])
-  const [savedComments, setSavedComments] = useState<Record<number, string>>({})
-  const [draftComment, setDraftComment] = useState('')
-  const [exportState, setExportState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
-  const evidenceRefs = useRef<Record<number, HTMLDivElement | null>>({})
-  const { ocrResult, gradingResult, setOcrResult, setGradingResult } = useOcr()
-  const [searchParams] = useSearchParams()
-  const reportId = searchParams.get('reportId')
-  useEffect(() => {
-    if (!reportId) return
-    const controller = new AbortController()
-    const loadReport = async () => {
-      const response = await fetch(`${API_BASE_URL}/api/history/${reportId}`, { signal: controller.signal })
-      if (!response.ok) return
-      const report = await response.json() as { confidence: number; ocrText: string; grading: GradingResult }
-      if (controller.signal.aborted) return
-      setGradingResult(report.grading)
-      setOcrResult({ uploadId: reportId, extractedText: report.ocrText, averageConfidence: report.confidence, words: [] })
-    }
-    void loadReport()
-    return () => controller.abort()
-  }, [reportId, setGradingResult, setOcrResult])
-  const downloadAnnotatedPdf = async () => {
-    if (!reportId) { setExportState('error'); return }
-    setExportState('loading')
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/export/${reportId}`, { method: 'POST' })
-      if (!response.ok) throw new Error()
-      const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `GradeSense_Report_${(searchParams.get('studentName') ?? 'Student').replace(/[^a-z0-9]+/gi, '_')}.pdf`
-      document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url)
-      setExportState('success')
-    } catch { setExportState('error') }
-    window.setTimeout(() => setExportState('idle'), 3000)
-  }
-  const markers = useMemo<PositionedWord[]>(() => { const positioned = (ocrResult?.words ?? []).map((word, index) => ({ word, index, vertices: word.boundingBox })).filter(item => item.vertices.length > 0); const maxX = Math.max(1, ...positioned.flatMap(item => item.vertices.map(vertex => vertex.x))); const maxY = Math.max(1, ...positioned.flatMap(item => item.vertices.map(vertex => vertex.y))); return positioned.sort((a, b) => a.word.confidence - b.word.confidence).slice(0, 3).map(item => { const xs = item.vertices.map(vertex => vertex.x); const ys = item.vertices.map(vertex => vertex.y); const minX = Math.min(...xs); const maxWordX = Math.max(...xs); const minY = Math.min(...ys); const maxWordY = Math.max(...ys); return { word: item.word, index: item.index, left: Math.min(91, Math.max(1, minX / maxX * 100)), top: Math.min(94, Math.max(1, minY / maxY * 100)), width: Math.max(4, (maxWordX - minX) / maxX * 100), height: Math.max(2, (maxWordY - minY) / maxY * 100) } }) }, [ocrResult])
-  const selectEvidence = (index: number) => { setSelectedEvidence(index); window.requestAnimationFrame(() => evidenceRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })) }
-  const openAnnotation = (index: number) => { setSelectedMarker(index); selectEvidence(index); setDraftComment(savedComments[index] ?? gradingResult?.evidence[index]?.reason ?? '') }
-  const closeAnnotation = () => setSelectedMarker(null)
-  const selectedWord = selectedMarker === null ? undefined : markers[selectedMarker]
-  const selectedReason = selectedMarker === null ? '' : gradingResult?.evidence[selectedMarker]?.reason ?? ''
-  const savedComment = selectedMarker === null ? '' : savedComments[selectedMarker] ?? selectedReason
-  let ocrWordCursor = 0
-  const ocrParagraphs = ocrResult?.extractedText.split(/\n+/).filter(Boolean) ?? []
-  const maxRubricScore = Math.max(1, ...(gradingResult?.rubricBreakdown.map(item => item.score) ?? [1]))
+  const { sessionId } = useParams<{ sessionId: string }>()
+  const navigate = useNavigate()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [isAddMode, setIsAddMode] = useState(false)
+  const [pages, setPages] = useState<RenderedPage[]>([])
+  const [pageError, setPageError] = useState<string | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
-  return <div><header className="mb-7"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#bd6247]">Grading review</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Amara Patel’s answer sheet</h1><p className="mt-2 text-sm text-stone-500">Industrial Revolution: social change · Original and AI-extracted review</p></header><div className="grid gap-5 xl:grid-cols-[4fr_3fr_3fr]"><Card className="overflow-hidden p-4 sm:p-5"><div className="mb-4"><h2 className="font-semibold">Student Answer Sheet</h2><p className="mt-1 text-xs text-stone-500">Original uploaded handwritten answer.</p></div>{ocrResult ? <div className="max-h-[720px] overflow-y-auto rounded-2xl bg-stone-100 p-3 sm:p-5"><div className="relative mx-auto min-h-[820px] max-w-[590px] overflow-hidden rounded-sm border bg-white px-8 py-12 shadow-[0_4px_18px_rgb(70,55,45,0.13)] sm:px-12" style={{ backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 34px, #dce9f2 35px, transparent 36px)' }}><div className="absolute left-7 top-0 h-full border-l border-red-100 sm:left-10" /><div className="relative font-[cursive] text-[15px] leading-9 text-stone-700 sm:text-base">{ocrParagraphs.map(paragraph => <p key={paragraph} className="mb-7">{paragraph}</p>)}</div>{markers.map((marker, index) => { const style = annotationStyles[index]; return !deletedMarkers.includes(index) && <motion.span key={`${marker.index}-highlight`} animate={{ opacity: selectedMarker === index ? 0.85 : 0.45 }} transition={{ duration: 0.25 }} style={{ left: `${marker.left}%`, top: `${marker.top}%`, width: `${marker.width}%`, height: `${marker.height}%` }} className={`pointer-events-none absolute border-2 ${style.highlight}`} /> })}{markers.map((marker, index) => { const style = annotationStyles[index]; return !deletedMarkers.includes(index) && <motion.button key={marker.index} aria-label={`Annotation ${index + 1}: ${marker.word.text}`} onClick={() => openAnnotation(index)} style={{ left: `${marker.left}%`, top: `${marker.top}%` }} animate={{ scale: selectedMarker === index ? 1.15 : 1 }} transition={{ duration: 0.25 }} className={`absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 text-xs font-bold shadow-md ${style.marker}`}>{index + 1}</motion.button> })}</div></div> : <EmptyState title="No OCR answer available" description="Upload and process a student answer to view OCR markers on the original response." />}</Card><Card className="overflow-hidden p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold">OCR Extraction Complete</h2><p className="mt-1 text-xs text-stone-500">Text recovered from the uploaded response.</p></div>{ocrResult && <Badge tone="success">{ocrResult.averageConfidence}% OCR Confidence</Badge>}</div>{ocrResult ? <><div className="mt-5 rounded-2xl bg-stone-100 p-5 sm:p-6"><ScanText className="mb-4 size-5 text-[#bd6247]" /><div className="space-y-5 text-sm leading-7 text-stone-700">{ocrParagraphs.map(paragraph => <p key={paragraph}>{paragraph.split(/(\s+)/).map((token, tokenIndex) => { if (/^\s+$/.test(token)) return token; const word = ocrResult.words[ocrWordCursor++]; const uncertain = word && word.confidence < 90 && normalizeText(word.text) === normalizeText(token); return uncertain ? <span key={`${token}-${tokenIndex}`} className="relative inline-block rounded bg-amber-100 px-1 text-stone-800">{token}<span className="absolute -bottom-5 left-0 rounded bg-amber-200 px-1 text-[9px] leading-4 text-amber-800">{word.confidence}%</span></span> : <span key={`${token}-${tokenIndex}`}>{token}</span> })}</p>)}</div></div><div className="mt-5 flex gap-2 rounded-xl bg-[#fff8e7] p-3 text-xs leading-5 text-amber-800"><CircleAlert className="mt-0.5 size-4 shrink-0" />Pale yellow words have lower recognition confidence. Compare them to the original sheet before finalising feedback.</div></> : <EmptyState title="OCR data is unavailable" description="Process a student answer to display extracted text and confidence details." />}</Card><div className="space-y-5">{gradingResult ? <><Card className="p-5"><div className="flex items-start justify-between"><div><h2 className="font-semibold">Score Summary</h2><p className="mt-1 text-xs text-stone-500">Evidence-based assessment</p></div><Badge tone="success">{ocrResult?.averageConfidence ?? 0}% Confidence</Badge></div><div className="mt-5 flex items-center gap-5"><div className="grid size-24 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(#16A34A ${gradingResult.percentage * 3.6}deg, #edf3ed 0deg)` }}><div className="grid size-[78px] place-items-center rounded-full bg-white"><span className="text-xl font-semibold">{gradingResult.percentage}%</span></div></div><div><p className="text-3xl font-semibold tracking-tight">{gradingResult.score}<span className="text-base font-medium text-stone-400">/20</span></p><p className="mt-1 text-sm font-medium text-[#16A34A]">Reviewed</p></div></div><p className="mt-4 text-xs leading-5 text-stone-500">{gradingResult.summary}</p><div className="mt-4 space-y-2 text-xs leading-5"><p><span className="font-semibold text-stone-700">Strengths: </span>{gradingResult.strengths.join(' · ')}</p><p><span className="font-semibold text-stone-700">Improvements: </span>{gradingResult.improvements.join(' · ')}</p></div></Card><Card className="max-h-[420px] overflow-y-auto p-5"><h2 className="font-semibold">Evidence</h2><p className="mt-1 text-xs text-stone-500">Linked to annotations on the original answer.</p><div className="mt-4 space-y-3">{gradingResult.evidence.map((evidence, index) => <div key={`${evidence.criterion}-${index}`} ref={element => { evidenceRefs.current[index] = element }}><EvidenceCard evidence={evidence} selected={index === selectedEvidence} ocrWords={ocrResult?.words ?? []} onSelect={() => selectEvidence(index)} /></div>)}</div></Card><Card className="p-5"><h2 className="font-semibold">Rubric Breakdown</h2><div className="mt-4 divide-y">{gradingResult.rubricBreakdown.map(item => <div key={item.criterion} className="py-3 first:pt-0"><div className="flex justify-between gap-3 text-xs"><span className="text-stone-600">{item.criterion}</span><span className="shrink-0 font-semibold">{item.score}</span></div><p className="mt-1 text-[11px] leading-4 text-stone-500">{item.feedback}</p><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-100"><motion.div initial={{ width: 0 }} animate={{ width: `${item.score / maxRubricScore * 100}%` }} transition={{ duration: 0.25 }} className="h-full rounded-full" style={{ backgroundColor: scoreColor(item.score, maxRubricScore) }} /></div></div>)}</div></Card></> : <Card className="p-5"><EmptyState title="No grading result available" description="Complete the AI processing workflow to view score, evidence, and rubric feedback." /></Card>}</div></div><AnimatePresence>{selectedMarker !== null && selectedWord && <AnnotationPanel number={selectedMarker + 1} type={annotationType(selectedReason, selectedWord.word.confidence)} sentence={sentenceFor(ocrResult?.extractedText ?? '', selectedWord.word.text)} comment={draftComment} savedComment={savedComment} onCommentChange={setDraftComment} onSave={() => setSavedComments(comments => ({ ...comments, [selectedMarker]: draftComment }))} onDelete={() => { setDeletedMarkers(markers => [...markers, selectedMarker]); closeAnnotation() }} onClose={closeAnnotation} />}</AnimatePresence></div>
+  const state = useAsync(signal => sessionService.get(sessionId!, signal), [sessionId])
+  const { annotations, add, patch, remove, reset, error: annotationError, isSaving, clearError } = useAnnotations(sessionId, [])
+
+  // Seed the editable list once the session loads.
+  useEffect(() => {
+    if (state.data) reset(state.data.annotations)
+  }, [state.data, reset])
+
+  const studentAnswer = state.data?.uploads.studentAnswer ?? null
+  const isPdf = studentAnswer?.mimeType === 'application/pdf'
+
+  useEffect(() => {
+    if (!sessionId || !studentAnswer) return
+    if (!isPdf) { setPages([]); return }
+
+    const controller = new AbortController()
+    setPageError(null)
+    // pdf.js is large and only this screen needs it, so it is loaded on demand.
+    import('../lib/pdf')
+      .then(({ renderPdf }) => renderPdf(answerFileUrl(sessionId), controller.signal))
+      .then(rendered => { if (!controller.signal.aborted) setPages(rendered) })
+      .catch((caught: unknown) => {
+        if (controller.signal.aborted) return
+        setPageError(messageOf(caught, 'The answer sheet could not be displayed.'))
+      })
+    return () => controller.abort()
+  }, [sessionId, studentAnswer, isPdf])
+
+  const selected = useMemo(() => annotations.find(entry => entry.id === selectedId) ?? null, [annotations, selectedId])
+
+  const handleMove = useCallback((id: string, rect: Rect) => { void patch(id, rect) }, [patch])
+
+  const handleCreate = useCallback(async (page: number, rect: Rect) => {
+    const created = await add({ ...rect, page, type: 'feedback', comment: '', correction: '' })
+    setIsAddMode(false)
+    if (created) setSelectedId(created.id)
+  }, [add])
+
+  const handleDelete = useCallback(async () => {
+    if (!selected) return
+    await remove(selected.id)
+    setSelectedId(null)
+  }, [remove, selected])
+
+  const download = async () => {
+    if (!report) return
+    setIsDownloading(true)
+    setDownloadError(null)
+    try {
+      await reportService.download(report.id, report.studentName)
+    } catch (caught) {
+      setDownloadError(messageOf(caught, 'The annotated PDF could not be created.'))
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  if (state.isLoading) {
+    return (
+      <div className="grid min-h-64 place-items-center text-sm text-stone-500">
+        <span className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin" />Loading the graded paper…</span>
+      </div>
+    )
+  }
+
+  if (state.error || !state.data) {
+    return (
+      <Card className="p-6">
+        <EmptyState
+          title="This grading session could not be opened"
+          description={state.error ?? 'The session no longer exists.'}
+          action={() => navigate('/')}
+          actionLabel="Start a new grading"
+        />
+      </Card>
+    )
+  }
+
+  const { session, report, ocr } = state.data
+
+  if (!report) {
+    return (
+      <Card className="p-6">
+        <EmptyState
+          title="This paper has not been graded yet"
+          description={session.error ?? 'Run the grading step to see marks, evidence and annotations.'}
+          action={() => navigate(`/processing/${session.id}`)}
+          actionLabel="Grade this paper"
+        />
+      </Card>
+    )
+  }
+
+  return (
+    <div>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#bd6247]">Grading review</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{report.studentName}</h1>
+          <p className="mt-2 text-sm text-stone-500">
+            {report.assignment} · {report.totalAwarded}/{report.maxMarks} marks
+            {report.needsReview && <> · <span className="font-medium text-amber-700">needs review</span></>}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => navigate(`/processing/${session.id}`)}>
+            <RefreshCw className="size-3.5" />Regrade
+          </Button>
+          <Button size="sm" onClick={() => void download()} disabled={isDownloading}>
+            {isDownloading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+            {isDownloading ? 'Building PDF…' : 'Download annotated PDF'}
+          </Button>
+        </div>
+      </header>
+
+      {(downloadError || annotationError || pageError) && (
+        <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+          <p className="flex-1">{downloadError ?? annotationError ?? pageError}</p>
+          <button
+            type="button"
+            onClick={() => { setDownloadError(null); clearError(); setPageError(null) }}
+            className="text-xs font-medium underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <div className="space-y-5">
+          <Card className="p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">Annotated answer sheet</h2>
+                <p className="mt-1 text-xs text-stone-500">
+                  Drag a box to move it, or select it and use the arrow keys. Edits are saved without regrading.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant={isAddMode ? 'primary' : 'secondary'}
+                aria-pressed={isAddMode}
+                onClick={() => { setIsAddMode(value => !value); setSelectedId(null) }}
+              >
+                {isAddMode ? <MousePointerClick className="size-3.5" /> : <Plus className="size-3.5" />}
+                {isAddMode ? 'Drag on the page' : 'Add annotation'}
+              </Button>
+            </div>
+
+            <div className="mb-4 flex flex-wrap gap-2">
+              {Object.entries(ANNOTATION_STYLES).map(([type, style]) => (
+                <span key={type} className="inline-flex items-center gap-1.5 text-[11px] font-medium text-stone-500">
+                  <span className="size-2.5 rounded-sm" style={{ backgroundColor: style.border }} />
+                  {style.label}
+                </span>
+              ))}
+            </div>
+
+            {studentAnswer ? (
+              <AnswerCanvas
+                pages={pages}
+                fallbackText={ocr?.text ?? ''}
+                annotations={annotations}
+                selectedId={selectedId}
+                isAddMode={isAddMode}
+                onSelect={setSelectedId}
+                onMove={handleMove}
+                onCreate={(page, rect) => void handleCreate(page, rect)}
+              />
+            ) : (
+              <EmptyState title="The answer sheet is unavailable" description="The uploaded file could not be found on the server." />
+            )}
+          </Card>
+
+          {ocr && ocr.warnings.length > 0 && (
+            <Card className="border-amber-200 bg-amber-50 p-4">
+              <p className="text-xs font-semibold text-amber-900">Text extraction warnings</p>
+              <ul className="mt-2 space-y-1 text-[11px] leading-4 text-amber-800">
+                {ocr.warnings.map(warning => <li key={warning}>· {warning}</li>)}
+              </ul>
+            </Card>
+          )}
+        </div>
+
+        <div className="space-y-5">
+          <ScoreCard report={report} />
+
+          {selected ? (
+            <AnnotationInspector
+              annotation={selected}
+              index={annotations.indexOf(selected) + 1}
+              isSaving={isSaving}
+              onChange={changes => void patch(selected.id, changes)}
+              onDelete={() => void handleDelete()}
+              onClose={() => setSelectedId(null)}
+            />
+          ) : (
+            <Card className="p-5">
+              <h2 className="font-semibold">Annotations</h2>
+              <p className="mt-1 text-xs text-stone-500">{annotations.length} on this paper. Select one to edit it.</p>
+              <ul className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+                {annotations.map((annotation, index) => {
+                  const style = ANNOTATION_STYLES[annotation.type] ?? ANNOTATION_STYLES.feedback
+                  return (
+                    <li key={annotation.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(annotation.id)}
+                        className="flex w-full items-start gap-2 rounded-xl border p-2.5 text-left transition hover:bg-stone-50"
+                      >
+                        <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: style.badge }}>
+                          {index + 1}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <Badge tone="neutral">{style.label}</Badge>
+                            <span className="text-[10px] text-stone-400">page {annotation.page + 1}</span>
+                          </span>
+                          <span className="mt-1 block truncate text-xs text-stone-600">{annotation.comment || 'No comment yet'}</span>
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </Card>
+          )}
+
+          <RubricBreakdown
+            grading={report.grading}
+            annotations={annotations}
+            selectedId={selectedId}
+            onSelectAnnotation={setSelectedId}
+          />
+        </div>
+      </div>
+    </div>
+  )
 }

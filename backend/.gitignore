@@ -1,12 +1,11 @@
 node_modules/
 dist/
 .env
-data/*.sqlite
+# The whole directory: WAL mode also creates .sqlite-wal and .sqlite-shm,
+# which hold live grading data.
+data/
 uploads/question-papers/*
 uploads/rubrics/*
 uploads/student-answers/*
 uploads/reports/*
-!uploads/question-papers/.gitkeep
-!uploads/rubrics/.gitkeep
-!uploads/student-answers/.gitkeep
-!uploads/reports/.gitkeep
+!uploads/**/.gitkeep

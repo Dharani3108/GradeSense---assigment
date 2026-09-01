@@ -1,79 +1,54 @@
-import vision from '@google-cloud/vision'
-import 'dotenv/config'
-import { readFile } from 'node:fs/promises'
-import type { OCRResult, OCRWord } from '../types/grading.js'
+import { db } from '../db/database.js'
+import { resolveOcrProvider } from '../providers/ocr/index.js'
+import type { OcrResult, UploadedFile } from '../types/grading.js'
 import { ApiError } from '../utils/api-error.js'
+import { absolutePath } from './upload.service.js'
 
-type VisionResponse = {
-  fullTextAnnotation?: {
-    text?: string | null
-    pages?: Array<{
-      blocks?: Array<{
-        paragraphs?: Array<{
-          words?: Array<{
-            symbols?: Array<{ text?: string | null }>
-            confidence?: number | null
-            boundingBox?: { vertices?: Array<{ x?: number | null; y?: number | null }> | null } | null
-          }>
-        }>
-      }>
-    }>
-  } | null
-}
+/**
+ * OCR output is cached per upload: the model answer and question paper do not
+ * change between regrades, and re-running a cloud OCR call for them would be
+ * both slow and billable.
+ */
 
-let client: vision.ImageAnnotatorClient | undefined
+type CachedRow = { provider: string; text: string; averageConfidence: number; payloadJson: string }
 
-function getClient() {
-  if (client) return client
-  const keyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS
-  if (!keyFilename) throw new ApiError(500, 'GOOGLE_APPLICATION_CREDENTIALS is not configured.')
-  client = new vision.ImageAnnotatorClient({ keyFilename })
-  return client
-}
-
-function extractWords(response: VisionResponse): OCRWord[] {
-  const words: OCRWord[] = []
-  for (const page of response.fullTextAnnotation?.pages ?? []) {
-    for (const block of page.blocks ?? []) {
-      for (const paragraph of block.paragraphs ?? []) {
-        for (const word of paragraph.words ?? []) {
-          const text = (word.symbols ?? []).map(symbol => symbol.text ?? '').join('')
-          if (!text) continue
-          words.push({
-            text,
-            confidence: Math.round((word.confidence ?? 0) * 100),
-            boundingBox: (word.boundingBox?.vertices ?? []).map(vertex => ({ x: vertex.x ?? 0, y: vertex.y ?? 0 })),
-          })
-        }
-      }
-    }
-  }
-  return words
-}
-
-function toOcrResult(uploadId: string, response: VisionResponse): OCRResult {
-  const words = extractWords(response)
-  return {
-    uploadId,
-    extractedText: response.fullTextAnnotation?.text ?? '',
-    averageConfidence: words.length ? Math.round(words.reduce((total, word) => total + word.confidence, 0) / words.length) : 0,
-    words,
+function readCache(uploadId: string): OcrResult | undefined {
+  const row = db.prepare('SELECT provider, text, average_confidence as averageConfidence, payload_json as payloadJson FROM ocr_results WHERE upload_id = ?')
+    .get(uploadId) as CachedRow | undefined
+  if (!row) return undefined
+  try {
+    return JSON.parse(row.payloadJson) as OcrResult
+  } catch {
+    // A corrupt cache row is not worth failing over; recompute instead.
+    db.prepare('DELETE FROM ocr_results WHERE upload_id = ?').run(uploadId)
+    return undefined
   }
 }
 
-export async function runOcr(uploadId: string, filePath: string, mimeType: string): Promise<OCRResult> {
-  const visionClient = getClient()
-  if (mimeType === 'application/pdf') {
-    // Local PDFs use Vision's synchronous batch API; asynchronous PDF OCR requires Cloud Storage input and output.
-    const content = await readFile(filePath)
-    const [result] = await visionClient.batchAnnotateFiles({
-      requests: [{ inputConfig: { mimeType, content }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }],
-    })
-    const response = result.responses?.[0]?.responses?.[0] as VisionResponse | undefined
-    if (!response) throw new ApiError(502, 'Vision did not return an OCR response for this PDF.')
-    return toOcrResult(uploadId, response)
-  }
+function writeCache(result: OcrResult) {
+  db.prepare(`INSERT INTO ocr_results (upload_id, provider, text, average_confidence, payload_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(upload_id) DO UPDATE SET provider = excluded.provider, text = excluded.text,
+      average_confidence = excluded.average_confidence, payload_json = excluded.payload_json, created_at = excluded.created_at`)
+    .run(result.uploadId, result.provider, result.text, result.averageConfidence, JSON.stringify(result), new Date().toISOString())
+}
 
-  const [response] = await visionClient.documentTextDetection(filePath)
-  return toOcrResult(uploadId, response as VisionResponse)
+export async function runOcr(file: UploadedFile, options: { refresh?: boolean } = {}): Promise<OcrResult> {
+  if (!options.refresh) {
+    const cached = readCache(file.id)
+    if (cached) return cached
+  }
+  const provider = resolveOcrProvider(file.mimeType)
+  try {
+    const result = await provider.extract({ uploadId: file.id, filePath: absolutePath(file), mimeType: file.mimeType })
+    writeCache(result)
+    return result
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError(502, `Text extraction failed for ${file.originalName}: ${error instanceof Error ? error.message : 'unknown error'}`)
+  }
+}
+
+export function getCachedOcr(uploadId: string) {
+  return readCache(uploadId)
 }
