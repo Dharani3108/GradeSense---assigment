@@ -41,9 +41,23 @@ export interface OCRWord {
 }
 
 export interface GradingResult {
-  sessionId: string
-  status: 'not_started'
-  score: number | null
-  maximumScore: number | null
-  annotations: Annotation[]
+  score: number
+  percentage: number
+  rubricBreakdown: RubricBreakdown[]
+  strengths: string[]
+  improvements: string[]
+  evidence: GradingEvidence[]
+  summary: string
+}
+
+export interface RubricBreakdown {
+  criterion: string
+  score: number
+  feedback: string
+}
+
+export interface GradingEvidence {
+  quote: string
+  reason: string
+  criterion: string
 }

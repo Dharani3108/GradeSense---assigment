@@ -49,7 +49,7 @@ export function UploadWizardPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const { setStudentAnswerUploadId, setOcrResult } = useOcr()
+  const { setStudentAnswerUploadId, setRubricUploadId, setOcrResult, setGradingResult } = useOcr()
   const navigate = useNavigate()
   const current = steps[activeStep - 1]
   const complete = Object.keys(uploads).map(Number)
@@ -68,7 +68,9 @@ export function UploadWizardPage() {
       if (current.field === 'studentAnswer') {
         setStudentAnswerUploadId(uploaded.id)
         setOcrResult(null)
+        setGradingResult(null)
       }
+      if (current.field === 'modelAnswer') setRubricUploadId(uploaded.id)
       if (activeStep < steps.length) window.setTimeout(() => setActiveStep(step => step + 1), 700)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The file could not be uploaded. Please try again.')

@@ -3,10 +3,11 @@ import { z } from 'zod'
 import { db } from '../db/database.js'
 import { resolve } from 'node:path'
 import { runOcr } from '../services/ocr.service.js'
-import type { Annotation, GradingResult, OCRResult } from '../types/grading.js'
+import type { Annotation, OCRResult } from '../types/grading.js'
+import { gradeAnswer } from '../services/grading.service.js'
 import { ApiError } from '../utils/api-error.js'
 
-const sessionSchema = z.object({ sessionId: z.string().uuid() })
+const gradeSchema = z.object({ ocrText: z.string().trim().min(1), rubricText: z.string().trim().min(1), totalMarks: z.number().positive() })
 const uploadSchema = z.object({ uploadId: z.string().uuid() })
 const annotationSchema = z.object({ sessionId: z.string().uuid(), annotationId: z.string().uuid().optional() })
 
@@ -24,10 +25,10 @@ export const createOcr: RequestHandler = async (request, response) => {
   return response.json(result)
 }
 
-export const createGradePlaceholder: RequestHandler = (request, response) => {
-  const { sessionId } = validate(sessionSchema, request.body)
-  const result: GradingResult = { sessionId, status: 'not_started', score: null, maximumScore: null, annotations: [] }
-  return response.status(202).json({ message: 'Grading is not implemented yet.', result })
+export const createGrade: RequestHandler = async (request, response) => {
+  const input = validate(gradeSchema, request.body)
+  const result = await gradeAnswer(input)
+  return response.json(result)
 }
 
 export const createAnnotationPlaceholder: RequestHandler = (request, response) => {
