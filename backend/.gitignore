@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+data/*.sqlite
+uploads/question-papers/*
+uploads/rubrics/*
+uploads/student-answers/*
+uploads/reports/*
+!uploads/question-papers/.gitkeep
+!uploads/rubrics/.gitkeep
+!uploads/student-answers/.gitkeep
+!uploads/reports/.gitkeep
