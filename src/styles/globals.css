@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply border-[#E8E5E2]; }
+  html { @apply bg-[#FCFBFA]; }
+  body { @apply min-h-screen bg-[#FCFBFA] font-sans text-zinc-900 antialiased; }
+  button, input { font: inherit; }
+  :focus-visible { @apply outline-none ring-2 ring-[#D97757] ring-offset-2; }
+}

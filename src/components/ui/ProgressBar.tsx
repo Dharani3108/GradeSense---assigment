@@ -1,0 +1,2 @@
+interface ProgressBarProps { value: number; className?: string }
+export function ProgressBar({ value, className = '' }: ProgressBarProps) { return <div className={`h-2 overflow-hidden rounded-full bg-stone-100 ${className}`} aria-label={`${value}% complete`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}><div className="h-full rounded-full bg-[#D97757] transition-all duration-500" style={{ width: `${value}%` }} /></div> }
