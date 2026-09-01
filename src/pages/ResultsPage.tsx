@@ -1,4 +1,4 @@
-import { Check, ChevronDown, CircleAlert, Save, ScanText, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, CircleAlert, Download, LoaderCircle, Save, ScanText, Trash2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -40,6 +40,7 @@ export function ResultsPage() {
   const [deletedMarkers, setDeletedMarkers] = useState<number[]>([])
   const [savedComments, setSavedComments] = useState<Record<number, string>>({})
   const [draftComment, setDraftComment] = useState('')
+  const [exportState, setExportState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const evidenceRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const { ocrResult, gradingResult, setOcrResult, setGradingResult } = useOcr()
   const [searchParams] = useSearchParams()
@@ -58,6 +59,22 @@ export function ResultsPage() {
     void loadReport()
     return () => controller.abort()
   }, [reportId, setGradingResult, setOcrResult])
+  const downloadAnnotatedPdf = async () => {
+    if (!reportId) { setExportState('error'); return }
+    setExportState('loading')
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/export/${reportId}`, { method: 'POST' })
+      if (!response.ok) throw new Error()
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `GradeSense_Report_${(searchParams.get('studentName') ?? 'Student').replace(/[^a-z0-9]+/gi, '_')}.pdf`
+      document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url)
+      setExportState('success')
+    } catch { setExportState('error') }
+    window.setTimeout(() => setExportState('idle'), 3000)
+  }
   const markers = useMemo<PositionedWord[]>(() => { const positioned = (ocrResult?.words ?? []).map((word, index) => ({ word, index, vertices: word.boundingBox })).filter(item => item.vertices.length > 0); const maxX = Math.max(1, ...positioned.flatMap(item => item.vertices.map(vertex => vertex.x))); const maxY = Math.max(1, ...positioned.flatMap(item => item.vertices.map(vertex => vertex.y))); return positioned.sort((a, b) => a.word.confidence - b.word.confidence).slice(0, 3).map(item => { const xs = item.vertices.map(vertex => vertex.x); const ys = item.vertices.map(vertex => vertex.y); const minX = Math.min(...xs); const maxWordX = Math.max(...xs); const minY = Math.min(...ys); const maxWordY = Math.max(...ys); return { word: item.word, index: item.index, left: Math.min(91, Math.max(1, minX / maxX * 100)), top: Math.min(94, Math.max(1, minY / maxY * 100)), width: Math.max(4, (maxWordX - minX) / maxX * 100), height: Math.max(2, (maxWordY - minY) / maxY * 100) } }) }, [ocrResult])
   const selectEvidence = (index: number) => { setSelectedEvidence(index); window.requestAnimationFrame(() => evidenceRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })) }
   const openAnnotation = (index: number) => { setSelectedMarker(index); selectEvidence(index); setDraftComment(savedComments[index] ?? gradingResult?.evidence[index]?.reason ?? '') }

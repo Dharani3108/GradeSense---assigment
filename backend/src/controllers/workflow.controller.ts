@@ -6,6 +6,7 @@ import { runOcr } from '../services/ocr.service.js'
 import type { Annotation, OCRResult } from '../types/grading.js'
 import { gradeAnswer } from '../services/grading.service.js'
 import { deleteReport, getReport, listReports, saveReport } from '../services/history.service.js'
+import { createAnnotatedReport } from '../services/export.service.js'
 import { ApiError } from '../utils/api-error.js'
 
 const gradeSchema = z.object({ ocrText: z.string().trim().min(1), rubricText: z.string().trim().min(1), totalMarks: z.number().positive(), studentName: z.string().trim().min(1).optional(), assignment: z.string().trim().min(1).optional(), confidence: z.number().min(0).max(100).optional() })
@@ -47,6 +48,7 @@ export const saveHistory: RequestHandler = (request, response) => {
 export const getHistory: RequestHandler = (_request, response) => response.json({ reports: listReports() })
 export const getHistoryReport: RequestHandler = (request, response) => { const id = z.string().uuid().safeParse(request.params.id); if (!id.success) throw new ApiError(400, 'Report id must be a UUID.'); const report = getReport(id.data); if (!report) throw new ApiError(404, 'Grading report was not found.'); return response.json(report) }
 export const removeHistoryReport: RequestHandler = (request, response) => { const id = z.string().uuid().safeParse(request.params.id); if (!id.success) throw new ApiError(400, 'Report id must be a UUID.'); if (!deleteReport(id.data)) throw new ApiError(404, 'Grading report was not found.'); return response.status(204).send() }
+export const exportReport: RequestHandler = async (request, response) => { const id = z.string().uuid().safeParse(request.params.reportId); if (!id.success) throw new ApiError(400, 'Report id must be a UUID.'); const exported = await createAnnotatedReport(id.data); response.setHeader('Content-Type', 'application/pdf'); response.setHeader('Content-Disposition', `attachment; filename="${exported.filename}"`); return response.send(Buffer.from(exported.bytes)) }
 
 export const getReportPlaceholder: RequestHandler = (request, response) => {
   const id = z.string().uuid().safeParse(request.params.id)

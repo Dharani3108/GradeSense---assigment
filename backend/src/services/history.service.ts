@@ -20,3 +20,7 @@ export function saveReport(input: { studentName?: string; assignment?: string; c
 export function listReports(): GradingReport[] { return (db.prepare('SELECT id, student_name as studentName, assignment, score, percentage, confidence, ocr_text as ocrText, grading_json as gradingJson, created_at as createdAt FROM grading_reports ORDER BY created_at DESC').all() as ReportRow[]).map(toReport) }
 export function getReport(id: string): GradingReport | undefined { const row = db.prepare('SELECT id, student_name as studentName, assignment, score, percentage, confidence, ocr_text as ocrText, grading_json as gradingJson, created_at as createdAt FROM grading_reports WHERE id = ?').get(id) as ReportRow | undefined; return row ? toReport(row) : undefined }
 export function deleteReport(id: string) { return db.prepare('DELETE FROM grading_reports WHERE id = ?').run(id).changes > 0 }
+
+export function findStudentUploadForReport(createdAt: string) {
+  return db.prepare("SELECT id, original_name as originalName, mime_type as mimeType, path FROM uploaded_files WHERE kind = 'studentAnswer' AND created_at <= ? ORDER BY created_at DESC LIMIT 1").get(createdAt) as { id: string; originalName: string; mimeType: string; path: string } | undefined
+}

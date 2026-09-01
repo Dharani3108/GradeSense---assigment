@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { createAnnotationPlaceholder, createGrade, createOcr, getHistory, getHistoryReport, getReportPlaceholder, removeHistoryReport, saveHistory } from '../controllers/workflow.controller.js'
+import { createAnnotationPlaceholder, createGrade, createOcr, exportReport, getHistory, getHistoryReport, getReportPlaceholder, removeHistoryReport, saveHistory } from '../controllers/workflow.controller.js'
 import { uploadDocuments } from '../controllers/upload.controller.js'
 import { upload } from '../middleware/upload.middleware.js'
 
@@ -12,4 +12,5 @@ apiRouter.post('/history/save', saveHistory)
 apiRouter.get('/history', getHistory)
 apiRouter.get('/history/:id', getHistoryReport)
 apiRouter.delete('/history/:id', removeHistoryReport)
+apiRouter.post('/export/:reportId', exportReport)
 apiRouter.get('/report/:id', getReportPlaceholder)
