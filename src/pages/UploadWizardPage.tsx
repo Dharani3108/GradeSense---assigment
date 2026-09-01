@@ -6,6 +6,7 @@ import { UploadCard } from '../components/upload/UploadCard'
 import { Button } from '../components/ui/Button'
 import { Stepper } from '../components/ui/Stepper'
 import { API_BASE_URL } from '../lib/api-config'
+import { useOcr } from '../context/ocr-context'
 import type { UploadFile } from '../types/grading'
 
 type UploadField = 'questionPaper' | 'modelAnswer' | 'studentAnswer'
@@ -48,6 +49,7 @@ export function UploadWizardPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const { setStudentAnswerUploadId, setOcrResult } = useOcr()
   const navigate = useNavigate()
   const current = steps[activeStep - 1]
   const complete = Object.keys(uploads).map(Number)
@@ -63,6 +65,10 @@ export function UploadWizardPage() {
       const uploaded = await uploadDocument(file, current.field, setProgress)
       setUploads(state => ({ ...state, [activeStep]: { name: uploaded.originalName, size: formatFileSize(uploaded.sizeBytes) } }))
       setUploadedDocuments(state => ({ ...state, [activeStep]: uploaded }))
+      if (current.field === 'studentAnswer') {
+        setStudentAnswerUploadId(uploaded.id)
+        setOcrResult(null)
+      }
       if (activeStep < steps.length) window.setTimeout(() => setActiveStep(step => step + 1), 700)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The file could not be uploaded. Please try again.')
