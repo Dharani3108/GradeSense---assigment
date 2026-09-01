@@ -1,6 +1,8 @@
 import type { RequestHandler } from 'express'
 import { z } from 'zod'
 import { db } from '../db/database.js'
+import { resolve } from 'node:path'
+import { runOcr } from '../services/ocr.service.js'
 import type { Annotation, GradingResult, OCRResult } from '../types/grading.js'
 import { ApiError } from '../utils/api-error.js'
 
@@ -14,10 +16,12 @@ function validate<T>(schema: z.ZodType<T>, value: unknown): T {
   return parsed.data
 }
 
-export const createOcrPlaceholder: RequestHandler = (request, response) => {
+export const createOcr: RequestHandler = async (request, response) => {
   const { uploadId } = validate(uploadSchema, request.body)
-  const result: OCRResult = { uploadId, status: 'not_started', text: '', confidence: null }
-  return response.status(202).json({ message: 'OCR is not implemented yet.', result })
+  const uploadedFile = db.prepare('SELECT id, mime_type as mimeType, path FROM uploaded_files WHERE id = ?').get(uploadId) as { id: string; mimeType: string; path: string } | undefined
+  if (!uploadedFile) throw new ApiError(404, 'Uploaded file was not found.')
+  const result: OCRResult = await runOcr(uploadedFile.id, resolve(process.cwd(), uploadedFile.path), uploadedFile.mimeType)
+  return response.json(result)
 }
 
 export const createGradePlaceholder: RequestHandler = (request, response) => {

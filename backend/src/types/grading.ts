@@ -29,9 +29,15 @@ export interface Annotation {
 
 export interface OCRResult {
   uploadId: string
-  status: 'not_started'
+  extractedText: string
+  averageConfidence: number
+  words: OCRWord[]
+}
+
+export interface OCRWord {
   text: string
-  confidence: number | null
+  confidence: number
+  boundingBox: Array<{ x: number; y: number }>
 }
 
 export interface GradingResult {
