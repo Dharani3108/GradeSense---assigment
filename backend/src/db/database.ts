@@ -37,5 +37,16 @@ export function initializeDatabase() {
       created_at TEXT NOT NULL,
       FOREIGN KEY (session_id) REFERENCES grading_sessions(id)
     );
+    CREATE TABLE IF NOT EXISTS grading_reports (
+      id TEXT PRIMARY KEY,
+      student_name TEXT NOT NULL,
+      assignment TEXT NOT NULL,
+      score REAL NOT NULL,
+      percentage REAL NOT NULL,
+      confidence REAL NOT NULL,
+      ocr_text TEXT NOT NULL,
+      grading_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `)
 }

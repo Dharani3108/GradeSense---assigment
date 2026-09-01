@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { createAnnotationPlaceholder, createGrade, createOcr, getHistoryPlaceholder, getReportPlaceholder } from '../controllers/workflow.controller.js'
+import { createAnnotationPlaceholder, createGrade, createOcr, getHistory, getHistoryReport, getReportPlaceholder, removeHistoryReport, saveHistory } from '../controllers/workflow.controller.js'
 import { uploadDocuments } from '../controllers/upload.controller.js'
 import { upload } from '../middleware/upload.middleware.js'
 
@@ -8,5 +8,8 @@ apiRouter.post('/upload', upload.fields([{ name: 'questionPaper', maxCount: 1 },
 apiRouter.post('/ocr', createOcr)
 apiRouter.post('/grade', createGrade)
 apiRouter.post('/annotate', createAnnotationPlaceholder)
-apiRouter.get('/history', getHistoryPlaceholder)
+apiRouter.post('/history/save', saveHistory)
+apiRouter.get('/history', getHistory)
+apiRouter.get('/history/:id', getHistoryReport)
+apiRouter.delete('/history/:id', removeHistoryReport)
 apiRouter.get('/report/:id', getReportPlaceholder)

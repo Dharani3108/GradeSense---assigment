@@ -61,3 +61,15 @@ export interface GradingEvidence {
   reason: string
   criterion: string
 }
+
+export interface GradingReport {
+  id: string
+  studentName: string
+  assignment: string
+  score: number
+  percentage: number
+  confidence: number
+  ocrText: string
+  grading: GradingResult
+  createdAt: string
+}
