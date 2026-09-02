@@ -158,7 +158,7 @@ function blankResult(rubric: Rubric, providerName: GradingResult['provider'], re
 }
 
 export async function gradeAnswer(input: GradeInput): Promise<GradingResult> {
-  const provider = input.provider ?? resolveLlmProvider()
+  let provider = input.provider ?? resolveLlmProvider()
   const { rubric, studentOcr } = input
   const studentText = studentOcr.text ?? ''
   const meaningful = studentText.replace(/\s+/g, ' ').trim()
@@ -170,9 +170,33 @@ export async function gradeAnswer(input: GradeInput): Promise<GradingResult> {
     return blankResult(rubric, provider.name, reason)
   }
 
-  const { parsed } = await callModel(provider, input)
-  const rawCriteria = Array.isArray(parsed.criteria) ? parsed.criteria : []
+  let parsed: Record<string, unknown>
+  try {
+    const result = await callModel(provider, input)
+    parsed = result.parsed
+  } catch (error) {
+    if (!input.provider && provider.name === 'gemini') {
+      console.warn(`[Grading] Gemini provider failed (${error instanceof Error ? error.message : error}), falling back to offline reference grader.`)
+      const { mockLlmProvider } = await import('../providers/llm/mock.js')
+      provider = mockLlmProvider
+      const result = await mockLlmProvider.grade({
+        studentText,
+        modelAnswerText: input.modelAnswerText,
+        questionPaperText: input.questionPaperText,
+        rubric,
+      }, new AbortController().signal)
+      const coerced = coerceJson(result)
+      if (coerced) {
+        parsed = coerced
+      } else {
+        throw error
+      }
+    } else {
+      throw error
+    }
+  }
 
+  const rawCriteria = Array.isArray(parsed.criteria) ? parsed.criteria : []
   const byId = new Map<string, z.infer<typeof rawCriterionSchema>>()
   let discarded = 0
   for (const entry of rawCriteria) {

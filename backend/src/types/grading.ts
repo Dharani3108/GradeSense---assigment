@@ -115,7 +115,7 @@ export interface QuestionResult {
   criteria: CriterionResult[]
 }
 
-export type LlmProviderName = 'gemini' | 'mock'
+export type LlmProviderName = 'gemini' | 'grok' | 'mock'
 
 export interface GradingResult {
   totalAwarded: number

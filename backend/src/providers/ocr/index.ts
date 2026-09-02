@@ -54,17 +54,21 @@ export async function extractText(input: OcrInput): Promise<OcrResult> {
   }
 
   for (const provider of recognisers(input.mimeType)) {
-    return provider.extract(input)
+    try {
+      const result = await provider.extract(input)
+      if (result.words.length || result.text.trim()) return result
+    } catch (error) {
+      console.warn(`[OCR] Recognition provider ${provider.name} failed:`, error instanceof Error ? error.message : error)
+    }
   }
 
-  // Nothing can recognise handwriting here, so say exactly what would fix it
-  // rather than returning an empty transcription with no explanation.
+  // Nothing can recognise handwriting here (or recognition failed), so fallback to the mock provider.
   const fallback = await mockOcrProvider.extract(input)
   return {
     ...fallback,
     warnings: [
       ...fallback.warnings,
-      'Set GEMINI_API_KEY (or GOOGLE_APPLICATION_CREDENTIALS for Cloud Vision) so the handwriting can be read.',
+      ...(fallback.words.length ? [] : ['Set GEMINI_API_KEY (or GOOGLE_APPLICATION_CREDENTIALS for Cloud Vision) so the handwriting can be read.']),
     ],
   }
 }

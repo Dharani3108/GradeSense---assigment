@@ -14,7 +14,7 @@ function num(value: string | undefined, fallback: number) {
  * with no cloud account. Tests pin the provider explicitly.
  */
 export type ProviderMode = 'auto' | 'mock'
-export type LlmProviderName = 'gemini' | 'mock'
+export type LlmProviderName = 'gemini' | 'grok' | 'mock'
 export type OcrProviderName = 'vision' | 'pdf-text' | 'gemini' | 'mock'
 
 export const env = {

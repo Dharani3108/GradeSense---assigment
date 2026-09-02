@@ -30,40 +30,7 @@ function responseSchema(Type: Record<string, string>) {
   }
 }
 
-function buildPrompt({ studentText, modelAnswerText, questionPaperText, rubric }: GradeRequest) {
-  const criteria = rubric.questions
-    .flatMap(question => question.criteria.map(criterion => `- id=${criterion.id} (question ${question.number}, max ${criterion.maxMarks} mark(s)): ${criterion.text}`))
-    .join('\n')
-  return `You are GradeSense, an examiner that must be auditable by a teacher.
-
-Grade the student answer against the marking rubric. Return one entry for EVERY rubric id listed, in the same order.
-
-Rules you must follow:
-- "awarded" must be between 0 and the criterion's max marks. Never exceed the max.
-- Judge the quality of the reasoning, NOT similarity to the model answer. A student who argues a different position can still earn full marks.
-- "quote" must be an EXACT, short span copied from the student answer that justifies your decision. Copy it character for character. If the point is entirely absent, use an empty string.
-- "status": "correct" for full credit, "partial" when the point is only half made, "missing" when the student never addresses it, "incorrect" when the student addresses it but states something wrong.
-- "feedback" states specifically what the student did or failed to do.
-- "correction" states what a full-credit answer would have said, in one sentence.
-- Do not invent evidence. If you are unsure, say so in the feedback and mark it partial.
-
-Rubric:
-${criteria}
-
-<question_paper>
-${questionPaperText.slice(0, 6000)}
-</question_paper>
-
-<model_answer_and_guidance>
-${modelAnswerText.slice(0, 12000)}
-</model_answer_and_guidance>
-
-<student_answer>
-${studentText.slice(0, 12000)}
-</student_answer>
-
-Return only the JSON object.`
-}
+import { buildRubricPrompt } from './prompt.js'
 
 export const geminiProvider: LlmProvider = {
   name: 'gemini',
@@ -75,7 +42,7 @@ export const geminiProvider: LlmProvider = {
     try {
       response = await client.models.generateContent({
         model: env.geminiModel,
-        contents: buildPrompt(request),
+        contents: buildRubricPrompt(request),
         config: { responseMimeType: 'application/json', responseSchema: responseSchema(Type as unknown as Record<string, string>), abortSignal: signal },
       })
     } catch (error) {
