@@ -39,25 +39,11 @@ function toAnnotation(row: AnnotationRow): Annotation {
 
 /* --------------------------------------------------------------- placing --- */
 
-const MARGIN_X = 0.70
-const MARGIN_WIDTH = 0.27
-const MARGIN_HEIGHT = 0.035
-
 function statusToType(status: CriterionResult['status']): AnnotationType {
   if (status === 'correct') return 'correct'
   if (status === 'incorrect') return 'incorrect'
   if (status === 'missing') return 'missing'
   return 'feedback'
-}
-
-/**
- * A rubric point the student never attempted has nothing to underline, so it is
- * pinned in the right margin beneath the last thing that question did produce.
- */
-function marginSlot(page: number, used: Map<number, number>) {
-  const next = used.get(page) ?? 0.08
-  used.set(page, Math.min(0.92, next + MARGIN_HEIGHT + 0.012))
-  return { page, x: MARGIN_X, y: next, width: MARGIN_WIDTH, height: MARGIN_HEIGHT }
 }
 
 /* -------------------------------------------------------------- spelling --- */
@@ -149,12 +135,14 @@ export interface GenerateInput {
 }
 
 /**
- * Builds the AI annotation set for a freshly graded paper. Existing annotations
- * for the session are cleared first so a regrade does not leave stale boxes.
+ * Builds the AI annotation set for a freshly graded paper.
+ *
+ * Only findings that can be located on the page become annotations. A rubric
+ * point the student never addressed is reported beside the paper instead, so
+ * the answer sheet is never marked where nothing was written.
  */
 export function generateAnnotations({ sessionId, reportId, grading, ocr, referenceText }: GenerateInput): Annotation[] {
   const now = new Date().toISOString()
-  const marginUse = new Map<number, number>()
   const drafts: Annotation[] = []
 
   const push = (
@@ -187,16 +175,21 @@ export function generateAnnotations({ sessionId, reportId, grading, ocr, referen
 
   for (const question of grading.questions) {
     for (const criterion of question.criteria) {
-      const comment = `${criterion.awarded}/${criterion.maxMarks} — ${criterion.feedback}`
-      const rects = criterion.quote && criterion.quoteVerified ? locateQuote(criterion.quote, ocr.words) : []
-      const box = unionRect(rects)
-      if (box) {
-        push(box, statusToType(criterion.status), criterion.criterionId, criterion.quote, comment, criterion.correction)
-        continue
-      }
-      // Nothing to point at: park it in the margin of the page this question reached.
-      const page = drafts.find(draft => draft.criterionId?.startsWith(`${question.questionId}-`))?.page ?? 0
-      push(marginSlot(page, marginUse), statusToType(criterion.status), criterion.criterionId, criterion.quote, comment, criterion.correction)
+      // A rubric point the student never attempted has nothing on the page to
+      // mark. Parking it in the margin puts a box where the student wrote
+      // nothing, which reads as an error against text that is not there.
+      // Those points belong in the report beside the paper, not on it.
+      if (!criterion.quote || !criterion.quoteVerified) continue
+      const box = unionRect(locateQuote(criterion.quote, ocr.words))
+      if (!box) continue
+      push(
+        box,
+        statusToType(criterion.status),
+        criterion.criterionId,
+        criterion.quote,
+        `${criterion.awarded}/${criterion.maxMarks} — ${criterion.feedback}`,
+        criterion.correction,
+      )
     }
   }
 

@@ -24,7 +24,7 @@ type Details = z.infer<typeof detailsSchema>
 const DOCUMENTS: Array<{ kind: UploadKind; label: string; hint: string }> = [
   { kind: 'questionPaper', label: 'Question paper', hint: 'The exam questions, so feedback can refer to what was asked.' },
   { kind: 'modelAnswer', label: 'Model answer and rubric', hint: 'The marking rubric is read from this file to set the marks available.' },
-  { kind: 'studentAnswer', label: 'Student answer', hint: 'The answer sheet to grade and annotate.' },
+  { kind: 'studentAnswer', label: 'Student answer', hint: 'The answer sheet to grade and annotate. Handwritten scans are read with Gemini.' },
 ]
 
 const STEPS = ['Details', ...DOCUMENTS.map(document => document.label)]

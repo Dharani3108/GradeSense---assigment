@@ -20,7 +20,7 @@ export const mockOcrProvider: OcrProvider = {
     }
     const bytes = await readFile(input.filePath).then(buffer => buffer.byteLength).catch(() => 0)
     const warning = IMAGE_MIME_TYPES.includes(input.mimeType)
-      ? 'Reading handwriting from an image needs Google Cloud Vision. Set GOOGLE_APPLICATION_CREDENTIALS, or upload a PDF with a text layer.'
+      ? 'Reading handwriting from an image needs a recognition engine. Set GEMINI_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS for Cloud Vision, or upload a PDF with a text layer.'
       : `No OCR provider can read ${input.mimeType}.`
     return {
       uploadId: input.uploadId,

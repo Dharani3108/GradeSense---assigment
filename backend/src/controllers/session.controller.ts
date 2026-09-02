@@ -85,7 +85,10 @@ export const postGrade: RequestHandler = async (request, response) => {
 export const getConfig: RequestHandler = (_request, response) => response.json({
   llmProvider: resolveLlmProvider().name,
   ocrProvider: resolveOcrProvider('application/pdf').name,
-  imageOcrAvailable: Boolean(env.googleCredentials),
+  // Handwriting can be read by Cloud Vision or by Gemini from the same key the
+  // grader uses, so either one makes scans and photographs workable.
+  imageOcrAvailable: Boolean(env.googleCredentials || env.geminiApiKey),
+  handwritingProvider: env.googleCredentials ? 'vision' : env.geminiApiKey ? 'gemini' : null,
   maxUploadBytes: env.maxUploadBytes,
   reviewConfidenceThreshold: env.reviewConfidenceThreshold,
 })

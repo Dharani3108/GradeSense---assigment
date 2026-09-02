@@ -48,7 +48,7 @@ export interface OcrPage {
   text: string
 }
 
-export type OcrProviderName = 'vision' | 'pdf-text' | 'mock'
+export type OcrProviderName = 'vision' | 'pdf-text' | 'gemini' | 'mock'
 
 export interface OcrResult {
   uploadId: string

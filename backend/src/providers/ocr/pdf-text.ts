@@ -70,7 +70,7 @@ async function extractPdf({ uploadId, filePath }: OcrInput): Promise<OcrResult> 
     words.push(...pageWords)
     pages.push({ page: index, width: viewport.width, height: viewport.height, text: joinLines(pageWords) })
   }
-  const warnings = words.length ? [] : ['This PDF has no selectable text layer. It is probably a scan, which needs Google Cloud Vision OCR.']
+  const warnings = words.length ? [] : ['This PDF has no selectable text layer, so it is a scan and needs handwriting recognition.']
   return { uploadId, provider: 'pdf-text', text: pages.map(page => page.text).join('\n\n'), averageConfidence: words.length ? 100 : 0, pages, words, warnings }
 }
 

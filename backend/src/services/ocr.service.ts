@@ -1,5 +1,5 @@
 import { db } from '../db/database.js'
-import { resolveOcrProvider } from '../providers/ocr/index.js'
+import { extractText } from '../providers/ocr/index.js'
 import type { OcrResult, UploadedFile } from '../types/grading.js'
 import { ApiError } from '../utils/api-error.js'
 import { absolutePath } from './upload.service.js'
@@ -38,9 +38,8 @@ export async function runOcr(file: UploadedFile, options: { refresh?: boolean } 
     const cached = readCache(file.id)
     if (cached) return cached
   }
-  const provider = resolveOcrProvider(file.mimeType)
   try {
-    const result = await provider.extract({ uploadId: file.id, filePath: absolutePath(file), mimeType: file.mimeType })
+    const result = await extractText({ uploadId: file.id, filePath: absolutePath(file), mimeType: file.mimeType })
     writeCache(result)
     return result
   } catch (error) {

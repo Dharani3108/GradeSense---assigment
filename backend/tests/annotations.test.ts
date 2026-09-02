@@ -13,7 +13,7 @@ import { getReport, saveReport } from '../src/services/history.service.js'
 import { createSession } from '../src/services/session.service.js'
 import type { Annotation, GradingReport, GradingResult, OcrResult } from '../src/types/grading.js'
 import { locateQuote } from '../src/utils/text.js'
-import { answers, modelAnswerText, ocrFrom, questionPaperText, rubric } from './fixtures.js'
+import { answers, modelAnswerText, ocrFrom, questionPaperText, rubric, stubProvider } from './fixtures.js'
 
 describe('locating a quote on the page', () => {
   const ocr = ocrFrom(answers.full)
@@ -63,10 +63,91 @@ describe('annotation generation', () => {
     })
   })
 
-  it('creates one annotation per rubric point', () => {
-    const criteriaCount = rubric.questions.flatMap(question => question.criteria).length
+  it('annotates every rubric point it can locate on the page', () => {
+    const locatable = grading.questions
+      .flatMap(question => question.criteria)
+      .filter(criterion => criterion.quote && criterion.quoteVerified)
     const rubricAnnotations = generated.filter(annotation => annotation.criterionId)
-    expect(rubricAnnotations).toHaveLength(criteriaCount)
+
+    expect(rubricAnnotations.length).toBeGreaterThan(0)
+    expect(rubricAnnotations).toHaveLength(locatable.length)
+  })
+
+  /**
+   * Marking the page where the student wrote nothing reads as an error against
+   * text that is not there. Those points belong in the report beside the paper.
+   */
+  it('keeps rubric points with no evidence off the page', async () => {
+    // A model reply that marks the first point of each question unaddressed.
+    const ids = rubric.questions.flatMap(question => question.criteria.map(criterion => criterion.id))
+    const unaddressedIds = rubric.questions.map(question => question.criteria[0].id)
+    const provider = stubProvider({
+      criteria: ids.map(criterionId => {
+        const missing = unaddressedIds.includes(criterionId)
+        return {
+          criterionId,
+          awarded: missing ? 0 : 1,
+          status: missing ? 'missing' : 'partial',
+          feedback: missing ? 'Not addressed anywhere in the answer.' : 'Partly there.',
+          correction: 'What a full-credit answer would have said.',
+          quote: missing ? '' : 'connected in series in a closed path',
+        }
+      }),
+      strengths: [],
+      improvements: [],
+      summary: 'Test reply.',
+    })
+
+    const ocrPartial = ocrFrom(answers.partial)
+    const gradingPartial = await gradeAnswer({
+      studentOcr: ocrPartial,
+      modelAnswerText,
+      questionPaperText,
+      rubric,
+      provider,
+    })
+
+    const unaddressed = gradingPartial.questions
+      .flatMap(question => question.criteria)
+      .filter(criterion => criterion.status === 'missing')
+    expect(unaddressed.map(criterion => criterion.criterionId).sort()).toEqual([...unaddressedIds].sort())
+
+    const annotations = generateAnnotations({
+      sessionId: 'session-fixture',
+      reportId: 'report-fixture',
+      grading: gradingPartial,
+      ocr: ocrPartial,
+      referenceText: modelAnswerText,
+    })
+
+    // Nothing on the page for them...
+    const annotated = new Set(annotations.map(annotation => annotation.criterionId))
+    for (const criterion of unaddressed) expect(annotated.has(criterion.criterionId)).toBe(false)
+    expect(annotations.some(annotation => annotation.type === 'missing')).toBe(false)
+
+    // ...but the report still carries each one, with its correction.
+    for (const criterion of unaddressed) {
+      expect(criterion.feedback.length).toBeGreaterThan(0)
+      expect(criterion.correction.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('never places an annotation for an unverifiable quote', () => {
+    const fabricated: GradingResult = {
+      ...grading,
+      questions: grading.questions.map(question => ({
+        ...question,
+        criteria: question.criteria.map(criterion => ({ ...criterion, quote: 'text the student never wrote', quoteVerified: false })),
+      })),
+    }
+    const annotations = generateAnnotations({
+      sessionId: 'session-fixture',
+      reportId: 'report-fixture',
+      grading: fabricated,
+      ocr,
+      referenceText: modelAnswerText,
+    })
+    expect(annotations.filter(annotation => annotation.criterionId)).toHaveLength(0)
   })
 
   it('carries the marks, the feedback and the correction', () => {

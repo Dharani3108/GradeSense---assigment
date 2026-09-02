@@ -1,11 +1,15 @@
  ✓ tests/grading.test.ts > a fully correct answer > awards full marks with no reversed-reasoning findings 
  ✓ tests/grading.test.ts > a partially correct answer > scores between zero and full, and names what is missing 
  ✓ tests/grading.test.ts > an incorrect answer > detects reversed relationships that share the expected vocabulary 
+ ✓ tests/grading.test.ts > an incorrect answer > still credits the points the student did get right 
+ ✓ tests/grading.test.ts > a blank answer > scores zero, flags review, and never calls the model 
  ✓ tests/annotations.test.ts > locating a quote on the page > returns a box around the words it matched 
  ✓ tests/annotations.test.ts > locating a quote on the page > still matches when OCR damaged the characters 
  ✓ tests/annotations.test.ts > locating a quote on the page > returns nothing for text the student never wrote 
  ✓ tests/annotations.test.ts > locating a quote on the page > produces one box per line for a quote that wraps 
- ✓ tests/annotations.test.ts > annotation generation > creates one annotation per rubric point 
+ ✓ tests/annotations.test.ts > annotation generation > annotates every rubric point it can locate on the page 
+ ✓ tests/annotations.test.ts > annotation generation > keeps rubric points with no evidence off the page 
+ ✓ tests/annotations.test.ts > annotation generation > never places an annotation for an unverifiable quote 
  ✓ tests/annotations.test.ts > annotation generation > carries the marks, the feedback and the correction 
  ✓ tests/annotations.test.ts > annotation generation > keeps every box inside the page 
  ✓ tests/annotations.test.ts > annotation generation > flags misspellings with the word the student meant 
@@ -17,8 +21,6 @@
  ✓ tests/annotations.test.ts > editing annotations > clamps an annotation dragged off the page 
  ✓ tests/annotations.test.ts > editing annotations > deletes an annotation and leaves the rest alone 
  ✓ tests/annotations.test.ts > editing annotations > reports a missing annotation instead of creating one 
- ✓ tests/grading.test.ts > an incorrect answer > still credits the points the student did get right 
- ✓ tests/grading.test.ts > a blank answer > scores zero, flags review, and never calls the model 
  ✓ tests/grading.test.ts > a blank answer > reports why an unreadable scan produced nothing 
  ✓ tests/grading.test.ts > an answer with OCR-like spelling errors > grades it the same as the clean answer 
  ✓ tests/grading.test.ts > an answer with OCR-like spelling errors > lowers confidence in step with the OCR confidence 
@@ -26,12 +28,21 @@
  ✓ tests/grading.test.ts > malformed or incomplete model output > keeps valid rows, zeroes the malformed ones, and says so 
  ✓ tests/grading.test.ts > malformed or incomplete model output > gives up with a clear error when nothing can be parsed at all 
  ✓ tests/grading.test.ts > a model or API failure > retries, then fails with a message instead of a wrong grade 
- ✓ tests/grading.test.ts > a model or API failure > does not retry a failure that cannot succeed on a retry 
  ✓ tests/rubric.test.ts > rubric parsing > reads every question and criterion out of the real model answer 
+ ✓ tests/grading.test.ts > a model or API failure > does not retry a failure that cannot succeed on a retry 
  ✓ tests/rubric.test.ts > rubric parsing > gives every criterion a stable id 
  ✓ tests/rubric.test.ts > rubric parsing > falls back to a flagged generic rubric when the document has no questions 
  ✓ tests/rubric.test.ts > rubric parsing > infers a per-question criterion when the marking table is missing 
  ✓ tests/rubric.test.ts > prose extraction > drops the marking tables and the grading guidance 
+ ✓ tests/ocr.test.ts > choosing how to read a document > reads a PDF text layer locally, without calling a model 
+ ✓ tests/ocr.test.ts > choosing how to read a document > escalates a scan with no text layer to the model 
+ ✓ tests/ocr.test.ts > choosing how to read a document > says what is missing when a scan arrives with no credentials at all 
+ ✓ tests/ocr.test.ts > reading handwriting with Gemini > turns each transcribed line into positioned words 
+ ✓ tests/ocr.test.ts > reading handwriting with Gemini > keeps the student spelling rather than correcting it 
+ ✓ tests/ocr.test.ts > reading handwriting with Gemini > adds a diagram description to the page text so it can be graded 
+ ✓ tests/ocr.test.ts > reading handwriting with Gemini > drops implausible boxes instead of drawing them on the paper 
+ ✓ tests/ocr.test.ts > reading handwriting with Gemini > reports a model failure instead of returning empty text 
+ ✓ tests/ocr.test.ts > reading handwriting with Gemini > rejects a transcription that is not valid JSON 
  ✓ tests/rubric.test.ts > pdf text extraction > returns positioned words for the sample student answer 
  ✓ tests/rubric.test.ts > pdf text extraction > warns rather than throwing when a PDF has no text layer 
  ✓ tests/rubric.test.ts > pdf text extraction > positions words from a plain text answer 
@@ -63,5 +74,5 @@
  ✓ tests/grading.test.ts > a score that would exceed the maximum > raises a negative mark to zero 
  ✓ tests/grading.test.ts > evidence > flags a quote that does not appear in the answer 
  ✓ tests/grading.test.ts > evidence > accepts a quote that survives OCR damage 
- Test Files  4 passed (4)
-      Tests  65 passed (65)
+ Test Files  5 passed (5)
+      Tests  76 passed (76)

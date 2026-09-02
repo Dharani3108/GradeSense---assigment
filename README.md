@@ -7,8 +7,10 @@ any annotation without regrading, then export an annotated copy as a PDF.
 React + TypeScript frontend, Node/Express backend, SQLite for persistence.
 
 **It runs with no API keys.** Grading falls back to a deterministic offline grader and text extraction
-reads the PDF text layer, so `npm run dev` works on a clean machine. Add a Gemini key to grade with a
-real model; add Google Cloud Vision credentials to read scans and photographs.
+reads the PDF text layer, so `npm run dev` works on a clean machine. Add a `GEMINI_API_KEY` to grade
+with a real model **and to read handwritten scans** — Gemini transcribes the page and describes any
+diagram, so the rubric points about the circuit and the graph can be marked. Cloud Vision is supported
+too, but is not required.
 
 ---
 
@@ -40,6 +42,10 @@ Open <http://localhost:5173> and grade the bundled sample paper:
 The sample answer is written to be wrong in specific, documented ways — see
 [`docs/ERROR_KEY.md`](docs/ERROR_KEY.md). It scores **4.5 / 15** and is flagged for human review.
 
+The real submitted paper is `backend/docs/samples/student-answer-handwritten.pdf` — three handwritten
+pages with a circuit diagram and a demand-supply graph. It is a scan, so it needs a `GEMINI_API_KEY`
+(below); without one the report says so instead of guessing.
+
 No `.env` is needed. Every setting has a working default; copy
 [`backend/.env.example`](backend/.env.example) to `backend/.env` to change any of them.
 
@@ -55,11 +61,19 @@ echo "GEMINI_API_KEY=your-key" >> backend/.env
 Restart the backend. It prints which providers are active on start-up, and the UI says so too. Keys
 are read from the environment and never committed — `.env` is gitignored.
 
-### Reading scans and photographs
+### Reading handwriting and scans
 
-Set `GOOGLE_APPLICATION_CREDENTIALS` to the absolute path of a service-account JSON key. Without it,
-uploading an image produces an empty extraction **with a warning**, which becomes a zero-score report
-flagged for review rather than an invented grade. PDFs with a text layer and `.txt` files need nothing.
+The same `GEMINI_API_KEY` covers it — no separate Google Cloud project needed. Text extraction
+escalates only as far as it has to:
+
+| Document | Read by | Cost |
+|---|---|---|
+| PDF with a text layer, `.txt` | locally, via pdf.js | free, exact, instant |
+| Scan or photograph | Cloud Vision if `GOOGLE_APPLICATION_CREDENTIALS` is set, else Gemini | one API call |
+| Neither configured | nothing — the report is a flagged zero that names what is missing | — |
+
+For a scan, Gemini also describes any diagram or graph in words and appends it to the page text, so
+the rubric points that ask about the drawing can be marked instead of guessed at.
 
 ## What it does
 
@@ -110,11 +124,11 @@ cd backend
 npm test
 ```
 
-**65 tests, all passing.** Full output: [`docs/test-output.txt`](docs/test-output.txt).
+**76 tests, all passing.** Full output: [`docs/test-output.txt`](docs/test-output.txt).
 
 ```
- Test Files  4 passed (4)
-      Tests  65 passed (65)
+ Test Files  5 passed (5)
+      Tests  76 passed (76)
 ```
 
 Every case the assignment asks for, plus the annotation and export guarantees:
@@ -136,6 +150,8 @@ Every case the assignment asks for, plus the annotation and export guarantees:
 | The original is never modified | `exports an annotated PDF and leaves the original untouched` |
 | Teacher edits reach the PDF | `exports the teacher edits, not the generated set` |
 | Marks always sum correctly | `expectMarkInvariants`, asserted on every grading test |
+| Unattempted points stay off the page | `keeps rubric points with no evidence off the page` |
+| Handwriting reading and its failures | `tests/ocr.test.ts` (Gemini stubbed, no network) |
 
 Every grading test runs the real code path with an injected provider, so API failures, timeouts and
 malformed output are exercised without a network or a mocking library.

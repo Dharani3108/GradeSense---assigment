@@ -126,11 +126,12 @@ export function UploadCard({ label, hint, file, isUploading = false, progress = 
               )}
 
               <p className="mt-4 text-xs text-stone-400">
-                PDF, TXT{imageOcrAvailable ? ', PNG or JPG' : ''} · up to 10 MB
+                PDF, PNG, JPG or TXT · up to 10 MB
               </p>
               {!imageOcrAvailable && (
                 <p className="mt-1 max-w-xs text-[11px] leading-4 text-stone-400">
-                  Scans and photos need Google Cloud Vision credentials on the backend. A PDF with selectable text works without them.
+                  A scan or photo needs handwriting recognition, which is not configured. Set
+                  {' '}<code className="rounded bg-stone-100 px-1">GEMINI_API_KEY</code> on the backend, or upload a PDF with selectable text.
                 </p>
               )}
             </div>

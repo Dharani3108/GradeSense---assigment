@@ -13,7 +13,7 @@ local SQLite file. They share no code, only a JSON contract that
 ├──────────────────┤                  ├───────────────────────┤
 │ ProcessingPage   │ ─ POST /grade ──▶│ workflow.service      │
 │                  │                  │   ├─ ocr.service ─────┼──────▶ OCR provider
-│                  │                  │   ├─ rubric.service   │        vision │ pdf-text │ mock
+│                  │                  │   ├─ rubric.service   │   pdf-text│vision│gemini│mock
 │                  │                  │   ├─ grading.service ─┼──────▶ LLM provider
 │                  │                  │   │   (guard rails)   │        gemini │ mock
 │                  │                  │   ├─ history.service  │ ──────▶ SQLite grading_reports
@@ -40,8 +40,14 @@ report's timestamp.)
 
 | Concern | Real | Fallback | Chosen by |
 |---|---|---|---|
-| Text extraction | Google Cloud Vision | `pdf-text` (pdf.js text layer, plain text) | `OCR_PROVIDER`, else credentials |
+| Text extraction | Cloud Vision, or Gemini reading the page directly | `pdf-text` (pdf.js text layer, plain text) | `OCR_PROVIDER`, else credentials |
 | Grading | Gemini (`gemini-2.5-flash`) | offline reference grader | `LLM_PROVIDER`, else `GEMINI_API_KEY` |
+
+Text extraction escalates rather than picking one engine up front: a PDF with a text layer is read
+locally, which is exact, free and instant; only a scan falls through to a recognition engine. Gemini
+matters here because it reads handwriting from the **same key the grader uses**, so a scanned answer
+sheet needs no separate Google Cloud project — and because it can describe a diagram in words, which
+is the only reason the rubric points about the circuit and the graph can be marked at all.
 
 `auto` (the default) picks the real provider when its credentials exist and falls back otherwise, so
 `npm run dev` works on a clean machine. Three things follow from this:
@@ -49,9 +55,9 @@ report's timestamp.)
 - The assignment permits a mock model, and the offline grader is a genuine one rather than canned JSON.
 - The failure cases the assignment asks for — API failure, malformed output, timeouts — are testable by
   injecting a provider, with no network and no mocking library.
-- Nothing pretends. When an image is uploaded without Vision credentials the OCR result comes back
-  empty **with a warning**, which the grading layer turns into a flagged zero-score report rather than
-  a hallucinated grade.
+- Nothing pretends. When a scan arrives and no recognition engine is configured, the result comes back
+  empty **with a warning naming what would fix it**, which the grading layer turns into a flagged
+  zero-score report rather than a hallucinated grade.
 
 ### 3. The model is untrusted input
 
@@ -89,8 +95,13 @@ overlay and the PDF, so a box cannot drift between what the teacher sees and wha
 
 Placement comes from [`locateQuote`](../backend/src/utils/text.ts): the graded quote is matched against
 the OCR word stream with a tolerant per-token comparison, and the matched words are grouped by line, so
-a quote that wraps produces one underline per line instead of a box swallowing the paragraph. A rubric
-point the student never attempted has nothing to underline, so it is pinned in the right margin.
+a quote that wraps produces one underline per line instead of a box swallowing the paragraph.
+
+Only findings that can be located become annotations. A rubric point the student never attempted has
+nothing to point at, and marking the page where nothing was written reads as an error against text
+that is not there — so those points are reported beside the paper instead of on it. The same rule
+drops any quote that cannot be verified, which means a model that invents evidence cannot put a box on
+a student's work.
 
 ### 5. The offline grader checks reasoning, not just vocabulary
 

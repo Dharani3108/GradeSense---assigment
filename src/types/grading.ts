@@ -51,7 +51,7 @@ export interface OcrPage {
 
 export interface OcrResult {
   uploadId: string
-  provider: 'vision' | 'pdf-text' | 'mock'
+  provider: 'vision' | 'pdf-text' | 'gemini' | 'mock'
   text: string
   averageConfidence: number
   pages: OcrPage[]
@@ -166,8 +166,10 @@ export interface SessionState {
 
 export interface ServiceConfig {
   llmProvider: 'gemini' | 'mock'
-  ocrProvider: 'vision' | 'pdf-text' | 'mock'
+  ocrProvider: 'vision' | 'pdf-text' | 'gemini' | 'mock'
   imageOcrAvailable: boolean
+  /** Which engine will read a scan, or null when none is configured. */
+  handwritingProvider: 'vision' | 'gemini' | null
   maxUploadBytes: number
   reviewConfidenceThreshold: number
 }

@@ -15,7 +15,7 @@ function num(value: string | undefined, fallback: number) {
  */
 export type ProviderMode = 'auto' | 'mock'
 export type LlmProviderName = 'gemini' | 'mock'
-export type OcrProviderName = 'vision' | 'pdf-text' | 'mock'
+export type OcrProviderName = 'vision' | 'pdf-text' | 'gemini' | 'mock'
 
 export const env = {
   port: num(process.env.PORT, 4000),
